@@ -42,6 +42,9 @@ type GitHub struct {
 	// TrustedActor is the only login whose labels and issues orch accepts.
 	TrustedActor string        `yaml:"trusted_actor"`
 	PollInterval time.Duration `yaml:"poll_interval"`
+	// ForbiddenPaths may never appear in a developer push ("dir/**" covers
+	// the tree). A push touching one stops the task in needs_human.
+	ForbiddenPaths []string `yaml:"forbidden_paths"`
 }
 
 // Telegram configures the bot. The bot token lives in SecretsDir.
@@ -142,6 +145,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.GitHub.PollInterval == 0 {
 		c.GitHub.PollInterval = 60 * time.Second
+	}
+	if c.GitHub.ForbiddenPaths == nil {
+		c.GitHub.ForbiddenPaths = []string{".github/**", "CODEOWNERS", "docs/CODEOWNERS"}
 	}
 	if c.Limits == (Limits{}) {
 		c.Limits = Limits{CIAttempts: 3, ReviewCycles: 3, DevRuns: 8, MaxDiffLines: 800}

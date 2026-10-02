@@ -11,9 +11,16 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
+	"sync"
 	"syscall"
+	"time"
 
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/config"
+	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/effects"
+	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/github"
+	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/poller"
+	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/store"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
@@ -71,17 +78,58 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	}
 }
 
-// serve will wire the store, poller, engine, runner, Telegram and panel.
-// For now it only starts logging and waits for a shutdown signal.
+// serve opens the store and runs the GitHub poller and the label mirror
+// until a shutdown signal. Later milestones add the runner, Telegram and the
+// control panel here.
 func serve(ctx context.Context, cfg *config.Config, logOut io.Writer) error {
 	log := slog.New(slog.NewJSONHandler(logOut, nil))
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	token, err := readSecret(cfg.SecretsDir, "github_orch_token")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
+		return fmt.Errorf("data dir: %w", err)
+	}
+	// Opening and migrating must finish even if a signal is already pending.
+	st, err := store.Open(context.WithoutCancel(ctx), filepath.Join(cfg.DataDir, "orch.db"))
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+
+	gh := github.New(token)
+	p := &poller.Poller{Store: st, GH: gh, Cfg: cfg.GitHub, Log: log.With("component", "poller")}
+	labels := &effects.Labels{Store: st, GH: gh, Log: log.With("component", "labels"), Interval: 5 * time.Second}
+
 	log.Info("orch starting", "version", version, "data_dir", cfg.DataDir, "repos", cfg.GitHub.Repos)
+	var wg sync.WaitGroup
+	for _, run := range []func(context.Context) error{p.Run, labels.Run} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = run(ctx)
+		}()
+	}
 	<-ctx.Done()
+	wg.Wait()
 	log.Info("orch stopped")
 	return nil
+}
+
+// readSecret reads one credential file from the secrets directory.
+func readSecret(dir, name string) (string, error) {
+	b, err := os.ReadFile(filepath.Join(dir, name))
+	if err != nil {
+		return "", fmt.Errorf("secret %s: %w", name, err)
+	}
+	v := strings.TrimSpace(string(b))
+	if v == "" {
+		return "", fmt.Errorf("secret %s is empty", name)
+	}
+	return v, nil
 }
 
 func defaultConfigPath() string {

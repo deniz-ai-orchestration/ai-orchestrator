@@ -9,6 +9,7 @@ github:
   trigger_label: agent:ready
   trusted_actor: denizekinci           # only this login's labels start tasks
   poll_interval: 60s
+  forbidden_paths: [".github/**", "CODEOWNERS", "docs/CODEOWNERS"]   # a push touching these stops the task
 
 telegram:
   enabled: false
