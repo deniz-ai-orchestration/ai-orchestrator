@@ -307,3 +307,15 @@ func (s *Store) exec1(ctx context.Context, q string, args ...any) error {
 	}
 	return nil
 }
+
+// LastDetail returns the detail of the task's most recent transition caused
+// by ev, or "" when there is none.
+func (s *Store) LastDetail(ctx context.Context, taskID int64, ev engine.EventKind) (string, error) {
+	var d string
+	err := s.db.QueryRowContext(ctx, `SELECT detail FROM transitions WHERE task_id = ? AND event = ? ORDER BY id DESC LIMIT 1`,
+		taskID, ev).Scan(&d)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return d, err
+}

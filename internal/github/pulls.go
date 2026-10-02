@@ -28,6 +28,21 @@ type PullRequest struct {
 	User   User   `json:"user"`
 	Head   Ref    `json:"head"`
 	Base   Ref    `json:"base"`
+	Merged bool   `json:"merged"`
+	// Mergeable is nil while GitHub is still computing it.
+	Mergeable      *bool  `json:"mergeable"`
+	MergeableState string `json:"mergeable_state"`
+}
+
+// GetPR returns one pull request, including its merge state.
+func (c *Client) GetPR(ctx context.Context, repo string, number int) (PullRequest, error) {
+	p, err := repoPath(repo)
+	if err != nil {
+		return PullRequest{}, err
+	}
+	var pr PullRequest
+	_, err = c.do(ctx, "GET", fmt.Sprintf("%s/pulls/%d", p, number), "", nil, &pr)
+	return pr, err
 }
 
 // FindPR returns the open pull request whose head is branch in repo itself

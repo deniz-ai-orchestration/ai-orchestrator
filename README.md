@@ -6,8 +6,9 @@ issue to a CI-checked, AI-reviewed pull request that a human approves and merges
 
 The components live under `internal/`, one package each, filled in milestone
 by milestone. Today `orch run` watches GitHub for the trigger label, mirrors
-task state as `orch:*` labels, and runs the developer agent in a container
-until it has opened a PR (milestones M1 to M3).
+task state as `orch:*` labels, runs the developer agent in a container until
+it has opened a PR, and follows the PR: on red CI it fetches the failed job
+log, has Ollama summarize it, and starts a fix run (milestones M1 to M4).
 
 ## Commands
 

@@ -269,7 +269,17 @@ func (d *Dev) runDev(ctx context.Context, t store.Task, runID int64, adapter pro
 	if err != nil {
 		return
 	}
-	prompt, err := devPrompt(d.Cfg, t, branch, base)
+	var extra string
+	switch t.Work {
+	case engine.WorkCIFix:
+		extra, err = d.Store.LastDetail(ctx, t.ID, engine.EvCIFailed)
+	case engine.WorkReviewFix:
+		extra, err = d.Store.LastDetail(ctx, t.ID, engine.EvChangesRequested)
+	}
+	if err != nil {
+		return
+	}
+	prompt, err := devPrompt(d.Cfg, t, branch, base, extra)
 	if err != nil {
 		return
 	}
@@ -443,14 +453,16 @@ func (d *Dev) askOnIssue(ctx context.Context, t store.Task, runID int64, questio
 
 type promptData struct {
 	Repo, Title, Body, Branch, Base, Human, Forbidden, Work string
-	Issue, PR, MaxLines                                     int
+	// Context is the CI failure (ci_fix) or the review findings (review_fix).
+	Context             string
+	Issue, PR, MaxLines int
 }
 
-func devPrompt(cfg *config.Config, t store.Task, branch, base string) (string, error) {
+func devPrompt(cfg *config.Config, t store.Task, branch, base, extra string) (string, error) {
 	var b bytes.Buffer
 	err := devTmpl.Execute(&b, promptData{
 		Repo: t.Repo, Issue: t.IssueNumber, Title: t.Title, Body: t.Body,
-		Branch: branch, Base: base, PR: t.PRNumber, Work: string(t.Work),
+		Branch: branch, Base: base, PR: t.PRNumber, Work: string(t.Work), Context: extra,
 		Human: cfg.GitHub.TrustedActor, MaxLines: cfg.Limits.MaxDiffLines,
 		Forbidden: strings.Join(cfg.GitHub.ForbiddenPaths, ", "),
 	})
