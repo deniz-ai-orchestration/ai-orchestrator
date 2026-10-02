@@ -1,0 +1,2 @@
+agy -p - --model gemini-3.1-pro-high --output-format stream-json 
+stdin: Read main.go and explain in one sentence what it prints. Do not modify any files.

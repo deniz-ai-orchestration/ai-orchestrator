@@ -1,0 +1,1 @@
+opencode run --format json --model opencode-go/nonexistent-9 Read\ main.go\ and\ explain\ in\ one\ sentence\ what\ it\ prints.\ Do\ not\ modify\ any\ files. 

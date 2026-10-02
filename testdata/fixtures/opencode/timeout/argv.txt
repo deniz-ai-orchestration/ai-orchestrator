@@ -1,0 +1,1 @@
+opencode run --format json --model opencode-go/kimi-k2.7-code In\ main.go\,\ add\ a\ function\ sub\(a\,\ b\ int\)\ int\ that\ returns\ a-b\,\ and\ use\ it\ in\ main\ to\ also\ print\ sub\(5\,2\).\ Keep\ it\ minimal.\ Then\ reply\ with\ one\ sentence. 

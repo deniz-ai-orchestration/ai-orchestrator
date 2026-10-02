@@ -1,0 +1,2 @@
+claude -p --output-format stream-json --verbose --permission-mode bypassPermissions --max-turns 5 --model sonnet-nonexistent-9 
+stdin: Read main.go and explain in one sentence what it prints. Do not modify any files.

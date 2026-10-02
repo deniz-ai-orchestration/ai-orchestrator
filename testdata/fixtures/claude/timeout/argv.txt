@@ -1,0 +1,3 @@
+claude -p --output-format stream-json --verbose --permission-mode bypassPermissions --max-turns 5 --model sonnet 
+stdin: In main.go, add a function sub(a, b int) int that returns a-b, and use it in main to also print sub(5,2). Keep it minimal. Then reply with one sentence.
+worktree change:  M main.go
