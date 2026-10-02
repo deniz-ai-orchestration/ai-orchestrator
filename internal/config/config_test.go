@@ -38,6 +38,7 @@ github: { trusted_actor: denizekinci }
 providers: { claude: { cli: claude, auth: oauth_token } }
 models: { sonnet: { provider: claude, model: sonnet } }
 roles: { developer: { pool: [sonnet] } }
+runner: { git_name: a, git_email: a@b }
 `
 
 func TestDefaults(t *testing.T) {
@@ -51,6 +52,9 @@ func TestDefaults(t *testing.T) {
 	}
 	if c.GitHub.Trigger != "agent:ready" || c.GitHub.PollInterval != time.Minute {
 		t.Errorf("github defaults = %+v", c.GitHub)
+	}
+	if c.Runner.Image != "orch-agent:latest" || c.Runner.Memory != "4g" || c.Runner.Pids != 1024 {
+		t.Errorf("runner defaults = %+v", c.Runner)
 	}
 	home, _ := os.UserHomeDir()
 	if c.SecretsDir != filepath.Join(home, ".config", "orch", "secrets") {
@@ -96,6 +100,7 @@ roles: { developer: { pool: [m] } }
 `, `unknown auth "password"`},
 		{"dev_runs too low", minimal + "limits: { ci_attempts: 3, review_cycles: 3, dev_runs: 2, max_diff_lines: 800 }\n", "must cover"},
 		{"zero limit", minimal + "limits: { ci_attempts: 0, review_cycles: 3, dev_runs: 8, max_diff_lines: 800 }\n", "at least 1"},
+		{"no git identity", strings.Replace(minimal, "git_email: a@b", "cpus: \"1\"", 1), "runner.git_name"},
 		{"telegram without user", minimal + "telegram: { enabled: true }\n", "telegram.user_id"},
 	}
 	for _, tc := range cases {

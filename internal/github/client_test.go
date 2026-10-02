@@ -65,6 +65,12 @@ func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.comments = append(f.comments, c)
 		w.WriteHeader(201)
 		_ = json.NewEncoder(w).Encode(c)
+	case r.URL.Path == "/repos/o/r/pulls":
+		if r.URL.Query().Get("head") != "o:agent/3-x" || r.URL.Query().Get("state") != "open" {
+			_, _ = w.Write([]byte("[]"))
+			return
+		}
+		_ = json.NewEncoder(w).Encode([]PullRequest{{Number: 12, State: "open", Body: "Closes #3", Head: Ref{"agent/3-x", "abc"}, Base: Ref{"main", "def"}}})
 	case r.URL.Path == "/repos/o/r/issues/4":
 		w.Header().Set("X-RateLimit-Remaining", "0")
 		w.Header().Set("X-RateLimit-Reset", "1790934600")
@@ -159,5 +165,32 @@ func TestEnsureCommentIsIdempotent(t *testing.T) {
 	f.comments[0].User.Login = "mallory"
 	if posted, _ := c.EnsureComment(ctx, "o/r", 3, m, "LGTM", "deniz-agent"); !posted {
 		t.Fatal("a copied marker from another account must not suppress the post")
+	}
+}
+
+func TestFindPR(t *testing.T) {
+	c, _ := newTest(t)
+	pr, err := c.FindPR(context.Background(), "o/r", "agent/3-x")
+	if err != nil || pr.Number != 12 || pr.Head.SHA != "abc" || pr.Base.Ref != "main" {
+		t.Fatalf("pr %+v, err %v", pr, err)
+	}
+	if _, err := c.FindPR(context.Background(), "o/r", "agent/3-y"); err != ErrNoPR {
+		t.Fatalf("missing branch: %v", err)
+	}
+}
+
+func TestLinksIssue(t *testing.T) {
+	for body, want := range map[string]bool{
+		"Closes #3":             true,
+		"fixes #3.":             true,
+		"Resolved #3 and #4":    true,
+		"Related to #3":         false,
+		"Closes #33":            false,
+		"closes owner/repo#3":   false,
+		"Implements it\nFix #3": true,
+	} {
+		if got := LinksIssue(body, 3); got != want {
+			t.Errorf("LinksIssue(%q) = %v", body, got)
+		}
 	}
 }

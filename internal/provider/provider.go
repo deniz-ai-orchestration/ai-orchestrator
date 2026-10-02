@@ -15,9 +15,12 @@ import (
 
 // Request is everything an adapter needs to build one headless run.
 type Request struct {
-	Model      string // the CLI's model id (config models.<name>.model)
-	Prompt     string // fed on stdin unless the adapter says otherwise
-	SchemaPath string // JSON schema for the structured result, inside the container
+	Model  string // the CLI's model id (config models.<name>.model)
+	Prompt string // fed on stdin unless the adapter says otherwise
+	// Schema is the structured-result JSON schema. claude and agy take it
+	// inline; codex reads it from SchemaPath, a file inside the container.
+	Schema     string
+	SchemaPath string
 	ResultPath string // where the CLI should write the final result, if it can
 	MaxTurns   int    // 0 = CLI default
 	ReadOnly   bool   // reviewers and testers: no edits to the workspace
@@ -102,6 +105,9 @@ func For(p config.Provider) (Adapter, error) {
 	}
 	return a, nil
 }
+
+// wantsResult reports whether the run must end in a structured result.
+func (r Request) wantsResult() bool { return r.Schema != "" || r.SchemaPath != "" }
 
 var errNoModel = errors.New("model is required")
 

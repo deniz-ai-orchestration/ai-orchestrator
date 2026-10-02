@@ -19,6 +19,14 @@ panel:
   enabled: false
   listen: 192.168.1.20:8787            # PC2's LAN address only
 
+runner:
+  image: orch-agent:latest             # docker build -t orch-agent docker/agent
+  cpus: "2"
+  memory: 4g
+  pids: 1024
+  git_name: deniz-agent                # author of the agents' commits
+  git_email: agent@youprise.com
+
 providers:                             # one per account / CLI, each can be disabled on its own
   claude:   { cli: claude,   auth: oauth_token }
   codex:    { cli: codex,    auth: auth_json, max_concurrent: 1 }

@@ -27,6 +27,7 @@ type Config struct {
 	GitHub    GitHub              `yaml:"github"`
 	Telegram  Telegram            `yaml:"telegram"`
 	Panel     Panel               `yaml:"panel"`
+	Runner    Runner              `yaml:"runner"`
 	Providers map[string]Provider `yaml:"providers"`
 	Models    map[string]Model    `yaml:"models"`
 	Roles     map[string]Role     `yaml:"roles"`
@@ -57,6 +58,20 @@ type Telegram struct {
 type Panel struct {
 	Enabled bool   `yaml:"enabled"`
 	Listen  string `yaml:"listen"`
+}
+
+// Runner configures the throwaway agent containers.
+type Runner struct {
+	// Image is the agent image built from docker/agent/Dockerfile.
+	Image string `yaml:"image"`
+	// CPUs, Memory and Pids bound each container (docker run --cpus,
+	// --memory, --pids-limit).
+	CPUs   string `yaml:"cpus"`
+	Memory string `yaml:"memory"`
+	Pids   int    `yaml:"pids"`
+	// GitName and GitEmail sign the agents' commits.
+	GitName  string `yaml:"git_name"`
+	GitEmail string `yaml:"git_email"`
 }
 
 // Provider is one account / CLI.
@@ -149,6 +164,18 @@ func (c *Config) applyDefaults() {
 	if c.GitHub.ForbiddenPaths == nil {
 		c.GitHub.ForbiddenPaths = []string{".github/**", "CODEOWNERS", "docs/CODEOWNERS"}
 	}
+	if c.Runner.Image == "" {
+		c.Runner.Image = "orch-agent:latest"
+	}
+	if c.Runner.CPUs == "" {
+		c.Runner.CPUs = "2"
+	}
+	if c.Runner.Memory == "" {
+		c.Runner.Memory = "4g"
+	}
+	if c.Runner.Pids == 0 {
+		c.Runner.Pids = 1024
+	}
 	if c.Limits == (Limits{}) {
 		c.Limits = Limits{CIAttempts: 3, ReviewCycles: 3, DevRuns: 8, MaxDiffLines: 800}
 	}
@@ -181,6 +208,13 @@ func (c *Config) Validate() error {
 	}
 	if c.Panel.Enabled && c.Panel.Listen == "" {
 		add("panel.listen is required when the panel is enabled")
+	}
+
+	if c.Runner.GitName == "" || c.Runner.GitEmail == "" {
+		add("runner.git_name and runner.git_email are required")
+	}
+	if c.Runner.Pids < 0 {
+		add("runner.pids must not be negative")
 	}
 
 	if len(c.Providers) == 0 {

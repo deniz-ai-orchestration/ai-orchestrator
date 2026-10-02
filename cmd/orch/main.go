@@ -20,6 +20,7 @@ import (
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/effects"
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/github"
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/poller"
+	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/runner"
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/store"
 )
 
@@ -78,9 +79,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	}
 }
 
-// serve opens the store and runs the GitHub poller and the label mirror
-// until a shutdown signal. Later milestones add the runner, Telegram and the
-// control panel here.
+// serve opens the store and runs the GitHub poller, the label mirror and
+// the developer runner until a shutdown signal. Later milestones add the
+// reviewer, Telegram and the control panel here.
 func serve(ctx context.Context, cfg *config.Config, logOut io.Writer) error {
 	log := slog.New(slog.NewJSONHandler(logOut, nil))
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
@@ -103,10 +104,18 @@ func serve(ctx context.Context, cfg *config.Config, logOut io.Writer) error {
 	gh := github.New(token)
 	p := &poller.Poller{Store: st, GH: gh, Cfg: cfg.GitHub, Log: log.With("component", "poller")}
 	labels := &effects.Labels{Store: st, GH: gh, Log: log.With("component", "labels"), Interval: 5 * time.Second}
+	dev := &runner.Dev{Store: st, GH: gh, Cfg: cfg, Containers: runner.Docker{},
+		WS:       runner.Workspaces{Root: filepath.Join(cfg.DataDir, "ws")},
+		RunsDir:  filepath.Join(cfg.DataDir, "runs"),
+		User:     fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
+		Interval: 10 * time.Second, Log: log.With("component", "developer")}
+	if err := dev.Recover(context.WithoutCancel(ctx)); err != nil {
+		log.Error("runner recovery failed; is Docker running?", "err", err)
+	}
 
 	log.Info("orch starting", "version", version, "data_dir", cfg.DataDir, "repos", cfg.GitHub.Repos)
 	var wg sync.WaitGroup
-	for _, run := range []func(context.Context) error{p.Run, labels.Run} {
+	for _, run := range []func(context.Context) error{p.Run, labels.Run, dev.Run} {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

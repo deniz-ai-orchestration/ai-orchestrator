@@ -30,8 +30,8 @@ func (claude) Build(r Request) (Command, error) {
 		// Keep the account's claude.ai connectors, user skills and plugins
 		// out of agent runs; only the repo's own settings apply.
 		"--strict-mcp-config", "--setting-sources", "project"}
-	if r.SchemaPath != "" {
-		argv = append(argv, "--json-schema", r.SchemaPath)
+	if r.Schema != "" {
+		argv = append(argv, "--json-schema", r.Schema) // inline JSON, not a path
 	}
 	if r.MaxTurns > 0 {
 		argv = append(argv, "--max-turns", strconv.Itoa(r.MaxTurns))
@@ -92,8 +92,12 @@ func (agy) Build(r Request) (Command, error) {
 	if err := check(r); err != nil {
 		return Command{}, err
 	}
+	argv := []string{"agy", "-p", r.Prompt, "--model", r.Model, "--output-format", "stream-json"}
+	if r.Schema != "" {
+		argv = append(argv, "--json-schema", r.Schema)
+	}
 	return Command{
-		Argv:   []string{"agy", "-p", r.Prompt, "--model", r.Model, "--output-format", "stream-json"},
+		Argv:   argv,
 		Mounts: []string{"orch-agy-keyring"},
 	}, nil
 }
