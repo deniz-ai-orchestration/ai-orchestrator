@@ -1,0 +1,8 @@
+/orch
+/bin/
+/dist/
+*.db
+*.db-wal
+*.db-shm
+/config.yaml
+/secrets/
