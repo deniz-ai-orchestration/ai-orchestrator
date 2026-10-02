@@ -30,6 +30,18 @@ private chat: `/status`, `/why`, `/retry`, `/cancel` (also stops a running
 agent), `/quota`, `/models`, `/use`, `/enable`, `/disable`, `/pause`,
 `/resume`. With Telegram off, notifications go to the log (M7).
 
+## Control panel
+
+With `panel.enabled: true`, orch serves a control panel on `panel.listen`
+(PC2's LAN address; open it by IP, not by a DNS name). It shows one card per
+recent agent run with its last lines, the active tasks with Retry and Cancel,
+each role's pool, pin and the model its next run would use, and each model's
+quota state with a switch. Pause all stops new runs from starting, and Stop
+ends a running agent (the task then waits for Retry). Each run has a live,
+view-only terminal of what the agent says and which tools it calls. The panel
+has no login: keep it on the LAN. Taking control of a terminal, ad-hoc
+sessions and needs-input pings come next (M3b).
+
 ## Commands
 
 ```sh

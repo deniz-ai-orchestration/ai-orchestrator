@@ -22,6 +22,7 @@ import (
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/effects"
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/github"
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/helper"
+	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/panel"
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/poller"
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/quota"
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/runner"
@@ -108,7 +109,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 
 // serve opens the store and runs the GitHub poller, the label mirror, the
 // agent runner (developer and reviewer), the PR/CI follower and the
-// Telegram bot until a shutdown signal. M3b adds the control panel.
+// Telegram bot, and the control panel when enabled, until a shutdown signal.
 func serve(ctx context.Context, cfg *config.Config, logOut io.Writer) error {
 	log := slog.New(slog.NewJSONHandler(logOut, nil))
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
@@ -161,10 +162,16 @@ func serve(ctx context.Context, cfg *config.Config, logOut io.Writer) error {
 	} else {
 		bot.API = telegram.LogAPI{Log: bot.Log}
 	}
+	loops := []func(context.Context) error{p.Run, labels.Run, agents.Run, follower.Run, runBot}
+	if cfg.Panel.Enabled {
+		ui := &panel.Server{Store: st, Cfg: cfg, Quota: tracker, Agents: agents, Log: log.With("component", "panel"),
+			Commands: &telegram.Bot{Store: st, Cfg: cfg, Quota: tracker, Agents: agents, Source: "the panel"}}
+		loops = append(loops, ui.Run)
+	}
 
 	log.Info("orch starting", "version", version, "data_dir", cfg.DataDir, "repos", cfg.GitHub.Repos)
 	var wg sync.WaitGroup
-	for _, run := range []func(context.Context) error{p.Run, labels.Run, agents.Run, follower.Run, runBot} {
+	for _, run := range loops {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -193,7 +200,7 @@ func models(ctx context.Context, cfg *config.Config, cmd string, args []string, 
 	case "status", "why", "retry", "cancel", "pause", "resume":
 		// Same handlers as the Telegram commands. A cancel from here cannot
 		// reach the running orch's container; its run ends on its own.
-		bot := &telegram.Bot{Store: st, Cfg: cfg, Quota: tr}
+		bot := &telegram.Bot{Store: st, Cfg: cfg, Quota: tr, Source: "the CLI"}
 		fmt.Fprintln(out, bot.Command(ctx, "/"+cmd+" "+strings.Join(args, " ")))
 		return nil
 	case "use":

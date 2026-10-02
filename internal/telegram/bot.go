@@ -35,6 +35,9 @@ type Bot struct {
 	Quota  *quota.Tracker
 	Agents Stopper
 	Log    *slog.Logger
+	// Source names where commands come from in a task's history (default
+	// "Telegram").
+	Source string
 	// PollTimeout is the getUpdates long-poll timeout (default 50s).
 	PollTimeout time.Duration
 	// NotifyEvery is how often pending notifications are sent (default 5s).

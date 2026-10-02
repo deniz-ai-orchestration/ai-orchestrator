@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>orch · run {{.ID}}</title>
+<link rel="stylesheet" href="/static/vendor/xterm.css">
+<link rel="stylesheet" href="/static/panel.css">
+<script src="/static/vendor/xterm.js"></script>
+<script src="/static/vendor/addon-fit.js"></script>
+<script src="/static/run.js" defer></script>
+</head>
+<body class="run-page">
+<header>
+  <h1><a href="/">orch</a> · run {{.ID}}</h1>
+  <div class="meta">{{.Role}}{{if .Work}} ({{human .Work}}){{end}} · {{.Model}}{{if .Task.ID}} · task {{.Task.ID}}: {{.Task.Title}}{{end}}</div>
+  <span id="state" class="badge {{.Status}}">{{human .Status}}</span>
+</header>
+<p class="muted">View only. Pipeline runs use the CLIs' headless modes; Take control comes with the next milestone step.</p>
+<div id="terminal" data-stream="/runs/{{.ID}}/stream"></div>
+</body>
+</html>

@@ -30,6 +30,14 @@ var reasonText = map[engine.Reason]string{
 	engine.ReasonHeadChanged:           "someone else pushed to the PR",
 }
 
+// ReasonText explains why a task is on hold, in a few words.
+func ReasonText(r engine.Reason) string {
+	if s, ok := reasonText[r]; ok {
+		return s
+	}
+	return string(r)
+}
+
 func ref(t store.Task) string {
 	return fmt.Sprintf("task %d (%s#%d)", t.ID, t.Repo, t.IssueNumber)
 }
@@ -111,6 +119,13 @@ const help = `orch commands:
 /enable <model>, /disable <model>
 /pause, /resume — stop or restart starting new runs`
 
+func (b *Bot) source() string {
+	if b.Source == "" {
+		return "Telegram"
+	}
+	return b.Source
+}
+
 // Command runs one command and returns the reply.
 func (b *Bot) Command(ctx context.Context, text string) string {
 	f := strings.Fields(text)
@@ -154,12 +169,12 @@ func (b *Bot) command(ctx context.Context, cmd string, args []string) (string, e
 		case "why":
 			return b.why(ctx, t)
 		case "retry":
-			if _, err := b.Store.ApplyEvent(ctx, id, engine.Event{Kind: engine.EvRetry, Detail: "/retry from Telegram"}, b.Cfg.Limits); err != nil {
+			if _, err := b.Store.ApplyEvent(ctx, id, engine.Event{Kind: engine.EvRetry, Detail: "/retry from " + b.source()}, b.Cfg.Limits); err != nil {
 				return "", err
 			}
 			return fmt.Sprintf("Resuming %s.", ref(t)), nil
 		default:
-			if _, err := b.Store.ApplyEvent(ctx, id, engine.Event{Kind: engine.EvCancel, Detail: "/cancel from Telegram"}, b.Cfg.Limits); err != nil {
+			if _, err := b.Store.ApplyEvent(ctx, id, engine.Event{Kind: engine.EvCancel, Detail: "/cancel from " + b.source()}, b.Cfg.Limits); err != nil {
 				return "", err
 			}
 			if b.Agents != nil && b.Agents.Stop(id) {
