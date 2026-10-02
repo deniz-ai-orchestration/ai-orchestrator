@@ -59,11 +59,12 @@ func (codex) Build(r Request) (Command, error) {
 	if err := check(r); err != nil {
 		return Command{}, err
 	}
-	sandbox := "workspace-write"
-	if r.ReadOnly {
-		sandbox = "read-only"
-	}
-	argv := []string{"codex", "exec", "-m", r.Model, "--json", "--sandbox", sandbox}
+	// Codex's own sandbox needs Linux namespaces, which the agent container
+	// (all capabilities dropped, no-new-privileges) does not allow, so every
+	// command would fail. The throwaway container is the sandbox, and a
+	// reviewer is kept read-only the same way as Claude's: by its prompt and
+	// its read-only GitHub token.
+	argv := []string{"codex", "exec", "-m", r.Model, "--json", "--dangerously-bypass-approvals-and-sandbox"}
 	if r.SchemaPath != "" {
 		argv = append(argv, "--output-schema", r.SchemaPath)
 	}

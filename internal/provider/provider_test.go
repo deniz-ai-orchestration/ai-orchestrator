@@ -54,7 +54,7 @@ func TestClaude(t *testing.T) {
 
 func TestCodex(t *testing.T) {
 	c := build(t, "codex", Request{Model: "gpt-6.1-sol", Prompt: "review", SchemaPath: "/r.json", ResultPath: "/out/verdict.json", ReadOnly: true})
-	if flag(c.Argv, "-m") != "gpt-6.1-sol" || flag(c.Argv, "--sandbox") != "read-only" ||
+	if flag(c.Argv, "-m") != "gpt-6.1-sol" || !slices.Contains(c.Argv, "--dangerously-bypass-approvals-and-sandbox") ||
 		flag(c.Argv, "--output-schema") != "/r.json" || flag(c.Argv, "-o") != "/out/verdict.json" ||
 		c.Argv[len(c.Argv)-1] != "-" {
 		t.Fatalf("argv %v", c.Argv)
@@ -62,8 +62,9 @@ func TestCodex(t *testing.T) {
 	if !c.Serialize || len(c.Mounts) != 1 || c.Stdin != "review" {
 		t.Fatalf("codex must serialize and mount one auth volume: %+v", c)
 	}
-	if w := build(t, "codex", Request{Model: "m", Prompt: "p"}); flag(w.Argv, "--sandbox") != "workspace-write" {
-		t.Fatalf("developer sandbox %v", w.Argv)
+	// Codex's own sandbox cannot start in the agent container.
+	if slices.Contains(c.Argv, "--sandbox") {
+		t.Fatalf("codex sandbox flag in %v", c.Argv)
 	}
 }
 
