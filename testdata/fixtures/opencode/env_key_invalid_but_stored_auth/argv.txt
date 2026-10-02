@@ -1,0 +1,2 @@
+opencode run --format json --model opencode-go/kimi-k2.7-code Read\ main.go\ and\ explain\ in\ one\ sentence\ what\ it\ prints.\ Do\ not\ modify\ any\ files. 
+env: OPENCODE_API_KEY=<redacted>

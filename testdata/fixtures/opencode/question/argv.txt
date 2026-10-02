@@ -1,0 +1,1 @@
+opencode run --format json --model opencode-go/kimi-k2.7-code Before\ changing\ anything\,\ I\ need\ you\ to\ ask\ me\ which\ package\ name\ I\ want.\ Do\ not\ edit\ any\ files\;\ just\ ask\ the\ question\ and\ stop. 

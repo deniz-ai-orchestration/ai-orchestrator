@@ -1,0 +1,2 @@
+codex exec --json --output-schema /tmp/orch-fixtures/schema.json -m gpt-6.1-sol --sandbox read-only -o /tmp/orch-codex-out.json - 
+stdin: Read main.go and explain in one sentence what it prints. Do not modify any files.

@@ -1,0 +1,3 @@
+codex exec --json --output-schema /tmp/orch-fixtures/schema.json -m gpt-6.1-sol --sandbox workspace-write -o /tmp/orch-codex-out.json - 
+stdin: In main.go, add a function sub(a, b int) int that returns a-b, and use it in main to also print sub(5,2). Keep it minimal. Then reply with one sentence.
+worktree change:  M main.go
