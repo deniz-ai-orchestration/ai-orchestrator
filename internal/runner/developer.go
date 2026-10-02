@@ -62,7 +62,7 @@ func (a *Agents) develop(ctx context.Context, t store.Task, outboxID int64) (eng
 		a.askOnIssue(ctx, t, out.Detail)
 		return engine.Event{Kind: engine.EvDevBlocked, Detail: out.Detail}, nil
 	default:
-		return failed(out.Reason(), string(out.Kind)+": "+out.Detail), nil
+		return outcomeEvent(t.DevModel, out), nil
 	}
 }
 

@@ -136,7 +136,7 @@ func TestReviewOutcomes(t *testing.T) {
 		{"prose", `{"type":"item.completed","item":{"type":"agent_message","text":"LGTM"}}` + "\n" + `{"type":"turn.completed","usage":{}}` + "\n",
 			engine.NeedsHuman, engine.ReasonBadOutput},
 		{"quota", `{"type":"turn.failed","error":{"message":"You've hit your usage limit. Try again later."}}` + "\n",
-			engine.NeedsHuman, engine.ReasonProviderUnavailable},
+			engine.ReviewQueued, ""}, // another model reviews next round
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -150,7 +150,7 @@ func TestReviewOutcomes(t *testing.T) {
 			if got.State != tc.want || got.Reason != tc.reason {
 				t.Fatalf("state %s reason %s, want %s %s (detail %q)", got.State, got.Reason, tc.want, tc.reason, e.lastDetail(t))
 			}
-			if tc.reason == engine.ReasonProviderUnavailable || tc.reason == engine.ReasonBadOutput {
+			if tc.reason == engine.ReasonBadOutput {
 				return
 			}
 			if got.State == engine.NeedsHuman && got.ResumeState != engine.ReviewQueued {

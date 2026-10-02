@@ -308,3 +308,27 @@ func TestReasonsValid(t *testing.T) {
 		t.Fatal("reason validation wrong")
 	}
 }
+
+func TestDeferredRunsGoBackToTheQueue(t *testing.T) {
+	dev := at(t, Developing)
+	r := step(t, dev, Event{Kind: EvRunDeferred, Detail: "sonnet rate limited"})
+	if r.Task.State != Queued || r.Task.DevRuns != dev.DevRuns-1 || r.Task.Work != dev.Work || len(r.Effects) != 0 {
+		t.Fatalf("dev deferred: %+v %+v", r.Task, r.Effects)
+	}
+	// A deferred run never exhausts dev_runs, however often it happens.
+	task := dev
+	for i := 0; i < 3*limits.DevRuns; i++ {
+		task = step(t, task, Event{Kind: EvRunDeferred}).Task
+		task = step(t, task, Event{Kind: EvDevStarted, Model: "codex-sol"}).Task
+	}
+	if task.State != Developing || task.DevRuns != dev.DevRuns {
+		t.Fatalf("after deferrals: %+v", task)
+	}
+
+	rev := at(t, Reviewing)
+	r = step(t, rev, Event{Kind: EvRunDeferred})
+	if r.Task.State != ReviewQueued || r.Task.ReviewModel != "" || len(r.Effects) != 0 {
+		t.Fatalf("review deferred: %+v", r.Task)
+	}
+	mustFail(t, at(t, AwaitingCI), Event{Kind: EvRunDeferred})
+}

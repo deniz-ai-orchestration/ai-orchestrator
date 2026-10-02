@@ -14,6 +14,7 @@ import (
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/engine"
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/github"
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/provider"
+	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/quota"
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/router"
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/store"
 )
@@ -64,6 +65,9 @@ type Agents struct {
 	Log        *slog.Logger
 	// ReviewGH posts the reviewer's verdict with the reviewer role's token.
 	ReviewGH func() (Commenter, error)
+	// Quota supplies pins, cooldowns and budgets, and learns from every run.
+	// Nil means every configured model is always available.
+	Quota *quota.Tracker
 }
 
 // Recover marks runs cut off by a restart as interrupted and removes their
@@ -142,15 +146,25 @@ func ContainerReady(p config.Provider) bool {
 // schedule starts the oldest task waiting for a developer or a reviewer.
 func (a *Agents) schedule(ctx context.Context) error {
 	tasks, err := a.Store.ListTasks(ctx, engine.Queued, engine.ReviewQueued)
-	if err != nil {
+	if err != nil || len(tasks) == 0 {
 		return err
+	}
+	var pins map[string]string
+	var skip func(string) string
+	if a.Quota != nil {
+		if pins, err = a.Store.RolePins(ctx); err != nil {
+			return err
+		}
+		if skip, err = a.Quota.Skip(ctx); err != nil {
+			return err
+		}
 	}
 	for _, t := range tasks {
 		role, kind, avoid := "developer", engine.EvDevStarted, ""
 		if t.State == engine.ReviewQueued {
 			role, kind, avoid = "reviewer", engine.EvReviewStarted, t.DevModel
 		}
-		choice, err := router.Pick(a.Cfg, role, avoid, ContainerReady)
+		choice, err := router.Pick(a.Cfg, role, router.Options{Avoid: avoid, Usable: ContainerReady, Pin: pins[role], Skip: skip})
 		if err != nil {
 			a.Log.Warn("no model for role; task waits", "task", t.ID, "role", role, "err", err)
 			continue
@@ -225,6 +239,15 @@ func failed(r engine.Reason, detail string) engine.Event {
 	return engine.Event{Kind: engine.EvRunFailed, Reason: r, Detail: detail}
 }
 
+// outcomeEvent maps a failed run: quota and capacity limits send the task
+// back to the queue for another model, everything else holds it.
+func outcomeEvent(model string, out provider.Outcome) engine.Event {
+	if out.Kind == provider.RateLimited || out.Kind == provider.Unavailable {
+		return engine.Event{Kind: engine.EvRunDeferred, Detail: fmt.Sprintf("%s %s: %s", model, out.Kind, out.Detail)}
+	}
+	return failed(out.Reason(), string(out.Kind)+": "+out.Detail)
+}
+
 // job is one agent run.
 type job struct {
 	task     store.Task
@@ -260,6 +283,11 @@ func (a *Agents) runAgent(ctx context.Context, j job) (provider.Outcome, error) 
 	out, res, err := a.container(ctx, j, runID, ad, m)
 	if err != nil && ctx.Err() != nil {
 		return out, err // left running; Recover marks it interrupted
+	}
+	if err == nil && a.Quota != nil {
+		if qerr := a.Quota.Record(ctx, j.model, runID, out); qerr != nil {
+			a.Log.Error("record quota signal", "run", runID, "err", qerr)
+		}
 	}
 	status, outcome := store.RunFailed, string(out.Reason())
 	switch {

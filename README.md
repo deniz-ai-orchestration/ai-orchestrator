@@ -13,12 +13,22 @@ agent (never the developer's model) reviews the head commit read-only; orch
 posts its verdict on the PR and sends blocking findings back to the developer
 (milestones M1 to M5).
 
+Models are picked per role from the ranked pool in `config.yaml`: a pin
+(`orch use`) wins while its model can run. A model that hits its quota cools
+down until the reset time the CLI reports (else 1h, 2h, then 4h) and the task
+goes back to the queue for the next model, without using up a developer run.
+An auth failure switches off every model of that provider until
+`orch enable`. `max_runs_per_5h` caps a model's runs per 5-hour window (M6).
+
 ## Commands
 
 ```sh
 go build -o orch ./cmd/orch
 ./orch -config config.example.yaml check-config   # validate a config
 ./orch -config ~/.config/orch/config.yaml run     # start (Ctrl-C to stop)
+./orch quota                       # each model: ready / cooling / off, runs in 5h, last limit
+./orch use reviewer claude-opus    # pin a role to a model ("auto" unpins)
+./orch disable codex-sol           # switch a model off; enable switches it back on
 ./orch version
 ```
 

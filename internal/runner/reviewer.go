@@ -79,7 +79,7 @@ func (a *Agents) review(ctx context.Context, t store.Task, outboxID int64) (engi
 		return engine.Event{}, err
 	}
 	if out.Kind != provider.OK {
-		return failed(out.Reason(), string(out.Kind)+": "+out.Detail), nil
+		return outcomeEvent(t.ReviewModel, out), nil
 	}
 	var v Verdict
 	if err := json.Unmarshal(out.Result, &v); err != nil {
