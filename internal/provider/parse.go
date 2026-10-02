@@ -92,7 +92,7 @@ func structured(req Request, raw json.RawMessage, text string, o Outcome) Outcom
 		raw = jsonObject(text)
 	}
 	if len(raw) == 0 {
-		if req.SchemaPath != "" {
+		if req.wantsResult() {
 			o.Kind, o.Detail = BadOutput, "no structured result: "+truncate(text, 200)
 			return o
 		}

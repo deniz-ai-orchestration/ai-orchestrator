@@ -35,8 +35,8 @@ func flag(argv []string, name string) string {
 }
 
 func TestClaude(t *testing.T) {
-	c := build(t, "claude", Request{Model: "sonnet", Prompt: "fix #17", SchemaPath: "/s.json", MaxTurns: 40})
-	if flag(c.Argv, "--model") != "sonnet" || flag(c.Argv, "--json-schema") != "/s.json" ||
+	c := build(t, "claude", Request{Model: "sonnet", Prompt: "fix #17", Schema: `{"type":"object"}`, MaxTurns: 40})
+	if flag(c.Argv, "--model") != "sonnet" || flag(c.Argv, "--json-schema") != `{"type":"object"}` ||
 		flag(c.Argv, "--max-turns") != "40" || flag(c.Argv, "--output-format") != "stream-json" {
 		t.Fatalf("argv %v", c.Argv)
 	}
