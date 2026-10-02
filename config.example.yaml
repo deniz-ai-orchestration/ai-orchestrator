@@ -1,0 +1,43 @@
+# orch configuration. Copy to ~/.config/orch/config.yaml and adjust.
+# Secrets never go here: tokens live as 0600 files in secrets_dir.
+
+data_dir: ~/.local/share/orch        # SQLite db, workspaces, run logs
+secrets_dir: ~/.config/orch/secrets
+
+github:
+  repos: [deniz-ai-orchestration/car-guessr-flow]
+  trigger_label: agent:ready
+  trusted_actor: denizekinci           # only this login's labels start tasks
+  poll_interval: 60s
+
+telegram:
+  enabled: false
+  user_id: 0                           # your numeric Telegram user id
+
+panel:
+  enabled: false
+  listen: 192.168.1.20:8787            # PC2's LAN address only
+
+providers:                             # one per account / CLI, each can be disabled on its own
+  claude:   { cli: claude,   auth: oauth_token }
+  codex:    { cli: codex,    auth: auth_json, max_concurrent: 1 }
+  gemini:   { cli: agy,      auth: keyring }      # Antigravity CLI (Google AI Pro)
+  opencode: { cli: opencode, auth: api_key }
+  ollama:   { endpoint: http://localhost:11434, auth: none }
+
+models:                                # ids to be confirmed by the M0.1 CLI spike
+  claude-sonnet: { provider: claude,   model: sonnet }
+  claude-opus:   { provider: claude,   model: opus }
+  codex-sol:     { provider: codex,    model: gpt-6.1-sol }
+  gemini-pro:    { provider: gemini,   model: gemini-pro }
+  kimi:          { provider: opencode, model: opencode-go/kimi }
+  ollama-local:  { provider: ollama,   model: qwen2.5-coder:7b-instruct }
+
+roles:
+  developer:          { pool: [claude-sonnet, claude-opus, codex-sol], timeout: 45m }
+  reviewer:           { pool: [codex-sol, claude-sonnet, gemini-pro], not_same_as: developer, timeout: 20m }
+  functional_tester:  { pool: [kimi, gemini-pro], enabled: false }   # Phase 2
+  adversarial_tester: { pool: [gemini-pro, kimi], enabled: false }   # Phase 3
+  helper:             { pool: [ollama-local] }
+
+limits: { ci_attempts: 3, review_cycles: 3, dev_runs: 8, max_diff_lines: 800 }
