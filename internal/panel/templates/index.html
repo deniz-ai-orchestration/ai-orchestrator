@@ -16,6 +16,8 @@
   <div id="flash" aria-live="polite"></div>
 </header>
 <main>
+  {{template "summon" .}}
+  {{template "chats" .}}
   {{template "agents" .}}
   {{template "tasks" .}}
   {{template "roles" .}}
@@ -35,25 +37,88 @@
 
 {{define "agents"}}
 <section id="agents" hx-get="/parts/agents" hx-trigger="every 3s, refresh from:body" hx-swap="outerHTML">
-  <h2>Agents</h2>
+  <h2>Runs</h2>
   {{if not .Agents}}<p class="muted">No runs yet.</p>{{end}}
   <div class="cards">
   {{range .Agents}}
     <article class="card {{.Status}}">
       <div class="card-head">
-        <a href="/runs/{{.ID}}">Run {{.ID}}</a>
+        <a href="/runs/{{.ID}}">Run {{.ID}}</a>{{if .AgentID}} <a href="/agents/{{.AgentID}}">agent {{.AgentID}}</a>{{end}}
         <span class="badge {{.Status}}">{{human .Status}}{{if and .Outcome (ne .Outcome "ok")}}: {{human .Outcome}}{{end}}</span>
       </div>
       <div class="meta">{{.Role}}{{if .Work}} ({{human .Work}}){{end}} · {{.Model}} · {{.Elapsed}}</div>
       {{if .Task.ID}}<div class="meta">Task {{.Task.ID}}: {{.Task.Title}}</div>{{end}}
       <pre class="preview">{{range .Preview}}<span class="{{lineClass .}}">{{.}}</span>
 {{end}}</pre>
-      {{if .Running}}
+      {{if and .Running .TaskID}}
       <form hx-post="/act" hx-target="#flash" hx-swap="innerHTML" hx-confirm="Stop this run? The task will wait for you.">
         <input type="hidden" name="verb" value="stop"><input type="hidden" name="a" value="{{.TaskID}}">
         <button class="danger">Stop</button> <a class="button" href="/runs/{{.ID}}">Open terminal</a>
       </form>
       {{end}}
+    </article>
+  {{end}}
+  </div>
+</section>
+{{end}}
+
+{{define "summon"}}
+<section id="summon">
+  <h2>Summon an agent</h2>
+  {{$v := .}}
+  {{with .Summon}}
+  {{if not .Enabled}}<p class="muted">{{.Why}}</p>{{else}}
+  <form class="summon" hx-post="/agents" hx-encoding="multipart/form-data" hx-target="#flash" hx-swap="innerHTML">
+    <div class="fields">
+      <label>Role
+        <select name="role" class="role">
+          {{range .Roles}}<option value="{{.}}" data-model="{{index $v.Summon.Default .}}">{{human .}}</option>{{end}}
+        </select>
+      </label>
+      <label>Provider
+        <select class="provider">
+          {{range .Providers}}<option value="{{.}}">{{.}}</option>{{end}}
+        </select>
+      </label>
+      <label>Model
+        <select class="model" name="model">
+          {{range .Choices}}<option value="{{.Name}}" data-provider="{{.Provider}}" title="{{.ModelID}}">{{.Name}}</option>{{end}}
+        </select>
+      </label>
+      <label>Project
+        <select name="project">
+          {{range .Projects}}<option value="{{.}}">{{.}}</option>{{end}}
+        </select>
+      </label>
+      <label>Branch
+        <input name="branch" placeholder="new: orch/&lt;id&gt;-&lt;task words&gt;" autocomplete="off" spellcheck="false">
+      </label>
+    </div>
+    <textarea name="message" rows="4" required placeholder="The task, with any context the agent needs"></textarea>
+    <div class="fields">
+      <label>Files <input type="file" name="files" multiple></label>
+      <span class="muted">Text files, up to 1 MB each.</span>
+      <button>Summon</button>
+    </div>
+  </form>
+  {{end}}
+  {{end}}
+</section>
+{{end}}
+
+{{define "chats"}}
+<section id="chats" hx-get="/parts/chats" hx-trigger="every 3s, refresh from:body" hx-swap="outerHTML">
+  <h2>Agents</h2>
+  {{if not .Chats}}<p class="muted">No agents yet.</p>{{end}}
+  <div class="cards">
+  {{range .Chats}}
+    <article class="card {{.State}}">
+      <div class="card-head">
+        <a href="/agents/{{.ID}}">Agent {{.ID}} · {{human .Role}}</a>
+        <span class="badge {{.State}}">{{human .State}}</span>
+      </div>
+      <div class="meta">{{.Model}} · {{.Project}} · {{.Branch}}{{if .Since}} · {{.Since}} ago{{end}}</div>
+      {{if .Last}}<p class="last">{{.Last}}</p>{{end}}
     </article>
   {{end}}
   </div>

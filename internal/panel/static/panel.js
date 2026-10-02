@@ -21,3 +21,26 @@ document.addEventListener("change", function (evt) {
   }
   if (first) model.value = first.value;
 });
+
+// Summon form: picking a role preselects its model and that model's
+// provider.
+function applyRole(role) {
+  var form = role.form;
+  var want = role.selectedOptions[0] && role.selectedOptions[0].dataset.model;
+  var model = form.querySelector("select.model");
+  var prov = form.querySelector("select.provider");
+  var opt = want && model.querySelector('option[value="' + CSS.escape(want) + '"]');
+  if (!opt) opt = model.options[0];
+  if (!opt) return;
+  prov.value = opt.dataset.provider;
+  for (var i = 0; i < model.options.length; i++) {
+    model.options[i].hidden = model.options[i].dataset.provider !== prov.value;
+  }
+  model.value = opt.value;
+}
+document.addEventListener("change", function (evt) {
+  if (evt.target.classList && evt.target.classList.contains("role")) applyRole(evt.target);
+});
+document.addEventListener("DOMContentLoaded", function () {
+  document.querySelectorAll("select.role").forEach(applyRole);
+});

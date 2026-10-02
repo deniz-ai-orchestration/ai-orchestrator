@@ -431,35 +431,45 @@ func (a *Agents) container(ctx context.Context, j job, runID int64, ad provider.
 // spec assembles a run's container. Secret values travel only in
 // Spec.Secrets.
 func (a *Agents) spec(runID int64, cmd provider.Command, ws, ioDir, ghToken string) (Spec, error) {
+	return buildSpec(a.Cfg, a.User, runID, cmd, ws, ioDir, ghToken)
+}
+
+// buildSpec assembles a run's container. An empty ghToken gives the agent
+// no GitHub credential at all.
+func buildSpec(cfg *config.Config, user string, runID int64, cmd provider.Command, ws, ioDir, ghToken string) (Spec, error) {
 	s := Spec{
 		Name:  fmt.Sprintf("%s%d", Prefix, runID),
-		Image: a.Cfg.Runner.Image, User: a.User,
+		Image: cfg.Runner.Image, User: user,
 		Work: ws, IO: ioDir,
-		CPUs: a.Cfg.Runner.CPUs, Memory: a.Cfg.Runner.Memory, Pids: a.Cfg.Runner.Pids,
+		CPUs: cfg.Runner.CPUs, Memory: cfg.Runner.Memory, Pids: cfg.Runner.Pids,
 		Argv: cmd.Argv, Stdin: cmd.Stdin,
 		Volumes: map[string]string{},
 		Env: map[string]string{
 			"HOME":                HomeDir,
 			"GIT_TERMINAL_PROMPT": "0",
-			"GIT_AUTHOR_NAME":     a.Cfg.Runner.GitName,
-			"GIT_AUTHOR_EMAIL":    a.Cfg.Runner.GitEmail,
-			"GIT_COMMITTER_NAME":  a.Cfg.Runner.GitName,
-			"GIT_COMMITTER_EMAIL": a.Cfg.Runner.GitEmail,
-			// git push authenticates with GH_TOKEN through this helper; gh
-			// reads GH_TOKEN itself.
-			"GIT_CONFIG_COUNT":   "2",
-			"GIT_CONFIG_KEY_0":   "credential.https://github.com.helper",
-			"GIT_CONFIG_VALUE_0": `!f() { test "$1" = get && echo username=x-access-token && echo "password=$GH_TOKEN"; }; f`,
-			"GIT_CONFIG_KEY_1":   "safe.directory",
-			"GIT_CONFIG_VALUE_1": "*",
+			"GIT_AUTHOR_NAME":     cfg.Runner.GitName,
+			"GIT_AUTHOR_EMAIL":    cfg.Runner.GitEmail,
+			"GIT_COMMITTER_NAME":  cfg.Runner.GitName,
+			"GIT_COMMITTER_EMAIL": cfg.Runner.GitEmail,
+			"GIT_CONFIG_COUNT":    "1",
+			"GIT_CONFIG_KEY_0":    "safe.directory",
+			"GIT_CONFIG_VALUE_0":  "*",
 		},
-		Secrets: map[string]string{"GH_TOKEN": ghToken},
+		Secrets: map[string]string{},
+	}
+	if ghToken != "" {
+		// git push authenticates with GH_TOKEN through this helper; gh
+		// reads GH_TOKEN itself.
+		s.Env["GIT_CONFIG_COUNT"] = "2"
+		s.Env["GIT_CONFIG_KEY_1"] = "credential.https://github.com.helper"
+		s.Env["GIT_CONFIG_VALUE_1"] = `!f() { test "$1" = get && echo username=x-access-token && echo "password=$GH_TOKEN"; }; f`
+		s.Secrets["GH_TOKEN"] = ghToken
 	}
 	for k, v := range cmd.Env {
 		s.Env[k] = v
 	}
 	for env, file := range cmd.SecretEnv {
-		v, err := readSecret(a.Cfg.SecretsDir, file)
+		v, err := readSecret(cfg.SecretsDir, file)
 		if err != nil {
 			return Spec{}, err
 		}

@@ -156,3 +156,31 @@ func TestOutcomeReason(t *testing.T) {
 		}
 	}
 }
+
+func TestResume(t *testing.T) {
+	c := build(t, "claude", Request{Model: "sonnet", Prompt: "p", Session: "0b6c-41"})
+	if flag(c.Argv, "--resume") != "0b6c-41" {
+		t.Fatalf("argv %v", c.Argv)
+	}
+	if fresh := build(t, "claude", Request{Model: "sonnet", Prompt: "p"}); slices.Contains(fresh.Argv, "--resume") {
+		t.Fatalf("fresh run resumes: %v", fresh.Argv)
+	}
+	ad, _ := For(config.Provider{CLI: "claude"})
+	if _, err := ad.Build(Request{Model: "sonnet", Prompt: "p", Session: "--dangerous"}); err == nil {
+		t.Fatal("accepted a session id that reads as an option")
+	}
+	for _, cli := range []string{"codex", "opencode", "agy"} {
+		ad, _ := For(config.Provider{CLI: cli})
+		if Resumes(ad) {
+			t.Errorf("%s claims to resume", cli)
+		}
+		if _, err := ad.Build(Request{Model: "m", Prompt: "p", Session: "s"}); err == nil {
+			t.Errorf("%s accepted a session", cli)
+		}
+	}
+	claudeAd, _ := For(config.Provider{CLI: "claude"})
+	out := claudeAd.Parse(Request{}, RunOutput{Stdout: []byte(`{"type":"result","is_error":false,"result":"hi","session_id":"abc"}` + "\n")})
+	if out.Session != "abc" || !Resumes(claudeAd) {
+		t.Fatalf("session %q", out.Session)
+	}
+}

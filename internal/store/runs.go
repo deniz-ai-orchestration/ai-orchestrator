@@ -18,6 +18,7 @@ const (
 type Run struct {
 	ID       int64
 	TaskID   int64
+	AgentID  int64 // a summoned agent's turn; TaskID is then 0
 	OutboxID int64
 	Role     string
 	Work     string
@@ -33,9 +34,9 @@ type Run struct {
 // StartRun records a run as running and returns its id.
 func (s *Store) StartRun(ctx context.Context, r Run) (int64, error) {
 	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO runs (task_id, outbox_id, role, work, provider, model, status, started_at, log_dir)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		r.TaskID, nullID(r.OutboxID), r.Role, r.Work, r.Provider, r.Model, RunRunning, fmtTime(s.now()), r.LogDir)
+		INSERT INTO runs (task_id, agent_id, outbox_id, role, work, provider, model, status, started_at, log_dir)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		nullID(r.TaskID), nullID(r.AgentID), nullID(r.OutboxID), r.Role, r.Work, r.Provider, r.Model, RunRunning, fmtTime(s.now()), r.LogDir)
 	if err != nil {
 		return 0, err
 	}
@@ -80,7 +81,7 @@ func (s *Store) InterruptRunning(ctx context.Context) (int64, error) {
 	return res.RowsAffected()
 }
 
-const runCols = `id, task_id, outbox_id, role, work, provider, model, status, outcome, log_dir, started_at, ended_at`
+const runCols = `id, task_id, agent_id, outbox_id, role, work, provider, model, status, outcome, log_dir, started_at, ended_at`
 
 // RunsForOutbox returns the runs started for one outbox item, oldest first.
 func (s *Store) RunsForOutbox(ctx context.Context, outboxID int64) ([]Run, error) {
@@ -113,13 +114,13 @@ func (s *Store) queryRuns(ctx context.Context, q string, args ...any) ([]Run, er
 	var out []Run
 	for rows.Next() {
 		var r Run
-		var task, ob sql.NullInt64
+		var task, agent, ob sql.NullInt64
 		var started, ended sql.NullString
-		if err := rows.Scan(&r.ID, &task, &ob, &r.Role, &r.Work, &r.Provider, &r.Model, &r.Status, &r.Outcome, &r.LogDir,
+		if err := rows.Scan(&r.ID, &task, &agent, &ob, &r.Role, &r.Work, &r.Provider, &r.Model, &r.Status, &r.Outcome, &r.LogDir,
 			&started, &ended); err != nil {
 			return nil, err
 		}
-		r.TaskID, r.OutboxID = task.Int64, ob.Int64
+		r.TaskID, r.AgentID, r.OutboxID = task.Int64, agent.Int64, ob.Int64
 		if started.Valid {
 			r.StartedAt, _ = parseTime(started.String)
 		}

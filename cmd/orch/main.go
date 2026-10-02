@@ -151,8 +151,15 @@ func serve(ctx context.Context, cfg *config.Config, logOut io.Writer) error {
 		}}
 	follower := &ci.Follower{Store: st, GH: gh, Helper: helper.FromConfig(cfg), Cfg: cfg,
 		Interval: cfg.GitHub.PollInterval, Log: log.With("component", "ci")}
+	chats := &runner.Chats{Store: st, Cfg: cfg, Containers: runner.Docker{},
+		Projects: runner.Projects{Dir: cfg.Projects.Dir},
+		Dir:      filepath.Join(cfg.DataDir, "agents"), RunsDir: agents.RunsDir, User: agents.User,
+		Quota: agents.Quota, Log: log.With("component", "chats")}
 	if err := agents.Recover(context.WithoutCancel(ctx)); err != nil {
 		log.Error("runner recovery failed; is Docker running?", "err", err)
+	}
+	if err := chats.Recover(context.WithoutCancel(ctx)); err != nil {
+		log.Error("agent recovery failed", "err", err)
 	}
 	bot := &telegram.Bot{Store: st, Cfg: cfg, Quota: tracker, Agents: agents, Log: log.With("component", "telegram")}
 	runBot := bot.RunNotifications
@@ -165,9 +172,9 @@ func serve(ctx context.Context, cfg *config.Config, logOut io.Writer) error {
 	} else {
 		bot.API = telegram.LogAPI{Log: bot.Log}
 	}
-	loops := []func(context.Context) error{p.Run, labels.Run, agents.Run, follower.Run, runBot}
+	loops := []func(context.Context) error{p.Run, labels.Run, agents.Run, follower.Run, runBot, chats.Run}
 	if cfg.Panel.Enabled {
-		ui := &panel.Server{Store: st, Cfg: cfg, Quota: tracker, Agents: agents, Log: log.With("component", "panel"),
+		ui := &panel.Server{Store: st, Cfg: cfg, Quota: tracker, Agents: agents, Chats: chats, Log: log.With("component", "panel"),
 			Commands: &telegram.Bot{Store: st, Cfg: cfg, Quota: tracker, Agents: agents, Source: "the panel"}}
 		loops = append(loops, ui.Run)
 	}
