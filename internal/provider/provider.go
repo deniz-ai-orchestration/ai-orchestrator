@@ -1,6 +1,6 @@
 // Package provider holds one adapter per coding-agent CLI. An adapter is
-// pure: it turns a run request into a command line, and (once real CLI
-// output from PC2 is recorded) turns that output into an Outcome. The runner
+// pure: it turns a run request into a command line and turns the captured
+// output into an Outcome. The runner
 // owns processes, containers, timeouts and credentials for every provider.
 package provider
 
@@ -80,11 +80,14 @@ func (o Outcome) Reason() engine.Reason {
 	}
 }
 
-// Adapter builds commands for one CLI.
+// Adapter builds commands for one CLI and reads its output.
 type Adapter interface {
 	// CLI is the binary name this adapter drives (config providers.<p>.cli).
 	CLI() string
 	Build(Request) (Command, error)
+	// Parse classifies a finished run. req is the request the command was
+	// built from; a schema request without a structured result is BadOutput.
+	Parse(req Request, run RunOutput) Outcome
 }
 
 var adapters = map[string]Adapter{}

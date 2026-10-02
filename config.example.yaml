@@ -25,12 +25,12 @@ providers:                             # one per account / CLI, each can be disa
   opencode: { cli: opencode, auth: api_key }
   ollama:   { endpoint: http://localhost:11434, auth: none }
 
-models:                                # ids to be confirmed by the M0.1 CLI spike
+models:                                # ids verified on PC2 2026-10-02 (testdata/fixtures)
   claude-sonnet: { provider: claude,   model: sonnet }
   claude-opus:   { provider: claude,   model: opus }
   codex-sol:     { provider: codex,    model: gpt-6.1-sol }
-  gemini-pro:    { provider: gemini,   model: gemini-pro }
-  kimi:          { provider: opencode, model: opencode-go/kimi }
+  gemini-pro:    { provider: gemini,   model: gemini-3.1-pro-high }
+  kimi:          { provider: opencode, model: opencode-go/kimi-k2.7-code }
   ollama-local:  { provider: ollama,   model: qwen2.5-coder:7b-instruct }
 
 roles:

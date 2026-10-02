@@ -70,9 +70,26 @@ func TestCodex(t *testing.T) {
 func TestOpenCodeQualifiesModel(t *testing.T) {
 	for _, m := range []string{"kimi", "opencode-go/kimi"} {
 		c := build(t, "opencode", Request{Model: m, Prompt: "test it", Agent: "qa"})
-		if flag(c.Argv, "--model") != "opencode-go/kimi" || flag(c.Argv, "--agent") != "qa" || c.Argv[len(c.Argv)-1] != "test it" {
+		if flag(c.Argv, "--model") != "opencode-go/kimi" || flag(c.Argv, "--agent") != "qa" || c.Stdin != "test it" {
 			t.Fatalf("argv %v", c.Argv)
 		}
+		if slices.Contains(c.Argv, "test it") || c.Env["XDG_DATA_HOME"] == "" {
+			t.Fatalf("prompt must be on stdin and the data dir isolated: %+v", c)
+		}
+	}
+}
+
+func TestOpenCodeReadOnlyUsesPlanAgent(t *testing.T) {
+	c := build(t, "opencode", Request{Model: "kimi", Prompt: "p", ReadOnly: true})
+	if flag(c.Argv, "--agent") != "plan" {
+		t.Fatalf("argv %v", c.Argv)
+	}
+}
+
+func TestClaudeIsolatesAccountSettings(t *testing.T) {
+	c := build(t, "claude", Request{Model: "sonnet", Prompt: "p"})
+	if !slices.Contains(c.Argv, "--strict-mcp-config") || flag(c.Argv, "--setting-sources") != "project" {
+		t.Fatalf("argv %v", c.Argv)
 	}
 }
 
