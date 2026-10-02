@@ -20,12 +20,26 @@ goes back to the queue for the next model, without using up a developer run.
 An auth failure switches off every model of that provider until
 `orch enable`. `max_runs_per_5h` caps a model's runs per 5-hour window (M6).
 
+## Telegram
+
+With `telegram.enabled: true`, your numeric `user_id` and the bot token in
+`secrets_dir/telegram_token`, orch messages you about each task: PR opened,
+CI failed, changes requested (silently), and ready for review or needs you
+(with sound, and Retry / Cancel buttons). It answers only your user id in a
+private chat: `/status`, `/why`, `/retry`, `/cancel` (also stops a running
+agent), `/quota`, `/models`, `/use`, `/enable`, `/disable`, `/pause`,
+`/resume`. With Telegram off, notifications go to the log (M7).
+
 ## Commands
 
 ```sh
 go build -o orch ./cmd/orch
 ./orch -config config.example.yaml check-config   # validate a config
 ./orch -config ~/.config/orch/config.yaml run     # start (Ctrl-C to stop)
+./orch status                      # active tasks
+./orch why 4                       # task 4's history
+./orch retry 4 / cancel 4          # resume a held task / end a task
+./orch pause / resume              # stop or restart starting new runs
 ./orch quota                       # each model: ready / cooling / off, runs in 5h, last limit
 ./orch use reviewer claude-opus    # pin a role to a model ("auto" unpins)
 ./orch disable codex-sol           # switch a model off; enable switches it back on

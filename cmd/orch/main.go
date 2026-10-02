@@ -26,6 +26,7 @@ import (
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/quota"
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/runner"
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/store"
+	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/telegram"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
@@ -36,6 +37,11 @@ const usage = `usage: orch [-config path] <command> [args]
 commands:
   run                    start the orchestrator (blocks until SIGINT/SIGTERM)
   check-config           load and validate the config, then exit
+  status                 list active tasks
+  why <task>             show a task's history
+  retry <task>           resume a task held in needs_human
+  cancel <task>          end a task
+  pause, resume          stop or restart starting new runs
   quota                  show every model's state, runs in 5h and last limit
   use <role> <model>     pin a role to a model ("auto" removes the pin)
   enable <model>         switch a model back on and clear its cooldown
@@ -63,7 +69,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return errors.New("expected a command")
 	}
 	args = fs.Args()[1:]
-	nargs := map[string]int{"run": 0, "check-config": 0, "version": 0, "quota": 0, "use": 2, "enable": 1, "disable": 1}
+	nargs := map[string]int{"run": 0, "check-config": 0, "version": 0, "quota": 0, "use": 2, "enable": 1, "disable": 1,
+		"status": 0, "why": 1, "retry": 1, "cancel": 1, "pause": 0, "resume": 0}
 	if n, ok := nargs[fs.Arg(0)]; ok && len(args) != n {
 		fs.Usage()
 		return fmt.Errorf("%s takes %d argument(s)", fs.Arg(0), n)
@@ -87,7 +94,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 			return err
 		}
 		return serve(ctx, cfg, stderr)
-	case "quota", "use", "enable", "disable":
+	case "quota", "use", "enable", "disable", "status", "why", "retry", "cancel", "pause", "resume":
 		cfg, err := config.Load(*cfgPath)
 		if err != nil {
 			return err
@@ -100,8 +107,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 }
 
 // serve opens the store and runs the GitHub poller, the label mirror, the
-// agent runner (developer and reviewer) and the PR/CI follower until a
-// shutdown signal. Later milestones add Telegram and the control panel.
+// agent runner (developer and reviewer), the PR/CI follower and the
+// Telegram bot until a shutdown signal. M3b adds the control panel.
 func serve(ctx context.Context, cfg *config.Config, logOut io.Writer) error {
 	log := slog.New(slog.NewJSONHandler(logOut, nil))
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
@@ -124,6 +131,7 @@ func serve(ctx context.Context, cfg *config.Config, logOut io.Writer) error {
 	gh := github.New(token)
 	p := &poller.Poller{Store: st, GH: gh, Cfg: cfg.GitHub, Log: log.With("component", "poller")}
 	labels := &effects.Labels{Store: st, GH: gh, Log: log.With("component", "labels"), Interval: 5 * time.Second}
+	tracker := &quota.Tracker{Store: st, Cfg: cfg}
 	agents := &runner.Agents{Store: st, GH: gh, Cfg: cfg, Containers: runner.Docker{},
 		WS:       runner.Workspaces{Root: filepath.Join(cfg.DataDir, "ws")},
 		RunsDir:  filepath.Join(cfg.DataDir, "runs"),
@@ -142,10 +150,21 @@ func serve(ctx context.Context, cfg *config.Config, logOut io.Writer) error {
 	if err := agents.Recover(context.WithoutCancel(ctx)); err != nil {
 		log.Error("runner recovery failed; is Docker running?", "err", err)
 	}
+	bot := &telegram.Bot{Store: st, Cfg: cfg, Quota: tracker, Agents: agents, Log: log.With("component", "telegram")}
+	runBot := bot.RunNotifications
+	if cfg.Telegram.Enabled {
+		tok, err := readSecret(cfg.SecretsDir, "telegram_token")
+		if err != nil {
+			return err
+		}
+		bot.API, runBot = telegram.New(tok), bot.Run
+	} else {
+		bot.API = telegram.LogAPI{Log: bot.Log}
+	}
 
 	log.Info("orch starting", "version", version, "data_dir", cfg.DataDir, "repos", cfg.GitHub.Repos)
 	var wg sync.WaitGroup
-	for _, run := range []func(context.Context) error{p.Run, labels.Run, agents.Run, follower.Run} {
+	for _, run := range []func(context.Context) error{p.Run, labels.Run, agents.Run, follower.Run, runBot} {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -171,6 +190,12 @@ func models(ctx context.Context, cfg *config.Config, cmd string, args []string, 
 	defer st.Close()
 	tr := &quota.Tracker{Store: st, Cfg: cfg}
 	switch cmd {
+	case "status", "why", "retry", "cancel", "pause", "resume":
+		// Same handlers as the Telegram commands. A cancel from here cannot
+		// reach the running orch's container; its run ends on its own.
+		bot := &telegram.Bot{Store: st, Cfg: cfg, Quota: tr}
+		fmt.Fprintln(out, bot.Command(ctx, "/"+cmd+" "+strings.Join(args, " ")))
+		return nil
 	case "use":
 		if err := tr.Pin(ctx, args[0], args[1]); err != nil {
 			return err

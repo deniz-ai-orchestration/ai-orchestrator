@@ -28,12 +28,20 @@ type fakeAgent struct {
 	stale  int
 	// act runs inside the "container" against the workspace, like the CLI would.
 	act func(ws string)
+	// started, when set, is signalled once the run starts; the run then
+	// blocks until its context ends, like a long agent run.
+	started chan struct{}
 }
 
-func (f *fakeAgent) Run(_ context.Context, s Spec, stdout, _ io.Writer) (Result, error) {
+func (f *fakeAgent) Run(ctx context.Context, s Spec, stdout, _ io.Writer) (Result, error) {
 	f.specs = append(f.specs, s)
 	if f.act != nil {
 		f.act(s.Work)
+	}
+	if f.started != nil {
+		close(f.started)
+		<-ctx.Done()
+		return Result{ExitCode: 137, Killed: true}, nil
 	}
 	_, _ = io.WriteString(stdout, f.stdout)
 	return Result{ExitCode: f.exit, Killed: f.killed}, nil

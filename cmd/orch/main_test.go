@@ -120,3 +120,41 @@ func TestModelCommands(t *testing.T) {
 		}
 	}
 }
+
+func TestTaskCommands(t *testing.T) {
+	cfg := testConfig(t, false)
+	ctx := context.Background()
+	out := func(args ...string) string {
+		var b bytes.Buffer
+		if err := run(ctx, append([]string{"-config", cfg}, args...), &b, &bytes.Buffer{}); err != nil {
+			t.Fatalf("%v: %v", args, err)
+		}
+		return b.String()
+	}
+	if got := out("status"); !strings.Contains(got, "No active tasks") {
+		t.Fatalf("status %q", got)
+	}
+	if got := out("pause"); !strings.Contains(got, "Paused") {
+		t.Fatalf("pause %q", got)
+	}
+	if got := out("status"); !strings.Contains(got, "Paused") {
+		t.Fatalf("status %q", got)
+	}
+	if got := out("why", "3"); !strings.Contains(got, "task 3") {
+		t.Fatalf("why %q", got)
+	}
+	out("resume")
+}
+
+func TestRunNeedsTelegramToken(t *testing.T) {
+	cfg := testConfig(t, true)
+	raw, _ := os.ReadFile(cfg)
+	raw = []byte(strings.Replace(string(raw), "enabled: false\n  user_id: 0", "enabled: true\n  user_id: 7", 1))
+	if err := os.WriteFile(cfg, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := run(context.Background(), []string{"-config", cfg, "run"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "telegram_token") {
+		t.Fatalf("err = %v", err)
+	}
+}

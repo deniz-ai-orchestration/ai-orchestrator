@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/config"
@@ -68,6 +69,33 @@ type Agents struct {
 	// Quota supplies pins, cooldowns and budgets, and learns from every run.
 	// Nil means every configured model is always available.
 	Quota *quota.Tracker
+
+	mu      sync.Mutex
+	current struct {
+		task   int64
+		cancel context.CancelCauseFunc
+	}
+}
+
+// ErrStopped is the cause of a run stopped from Telegram or the panel.
+var ErrStopped = errors.New("run stopped by the user")
+
+// Stop kills the task's running container, if it has one. The run ends as
+// failed with outcome "stopped".
+func (a *Agents) Stop(taskID int64) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.current.cancel == nil || a.current.task != taskID {
+		return false
+	}
+	a.current.cancel(ErrStopped)
+	return true
+}
+
+func (a *Agents) setCurrent(task int64, cancel context.CancelCauseFunc) {
+	a.mu.Lock()
+	a.current.task, a.current.cancel = task, cancel
+	a.mu.Unlock()
 }
 
 // Recover marks runs cut off by a restart as interrupted and removes their
@@ -145,6 +173,9 @@ func ContainerReady(p config.Provider) bool {
 
 // schedule starts the oldest task waiting for a developer or a reviewer.
 func (a *Agents) schedule(ctx context.Context) error {
+	if paused, err := a.Store.Paused(ctx); err != nil || paused {
+		return err
+	}
 	tasks, err := a.Store.ListTasks(ctx, engine.Queued, engine.ReviewQueued)
 	if err != nil || len(tasks) == 0 {
 		return err
@@ -217,11 +248,18 @@ func (a *Agents) execute(ctx context.Context, it store.OutboxItem) error {
 	if len(prior) >= 2 {
 		ev = failed(engine.ReasonCLIError, "run was interrupted twice by an orch restart")
 	} else {
-		ev, err = work(ctx, t, it.ID)
-		if err != nil {
-			if ctx.Err() != nil {
-				return err // shutting down: the effect stays pending and the run reads as interrupted
-			}
+		runCtx, cancel := context.WithCancelCause(ctx)
+		a.setCurrent(t.ID, cancel)
+		ev, err = work(runCtx, t, it.ID)
+		a.setCurrent(0, nil)
+		cancel(nil)
+		switch {
+		case err == nil:
+		case errors.Is(err, ErrStopped):
+			ev = failed(engine.ReasonCLIError, ErrStopped.Error())
+		case ctx.Err() != nil:
+			return err // shutting down: the effect stays pending and the run reads as interrupted
+		default:
 			ev = failed(engine.ReasonCLIError, err.Error())
 		}
 	}
@@ -281,8 +319,9 @@ func (a *Agents) runAgent(ctx context.Context, j job) (provider.Outcome, error) 
 		return provider.Outcome{}, err
 	}
 	out, res, err := a.container(ctx, j, runID, ad, m)
-	if err != nil && ctx.Err() != nil {
-		return out, err // left running; Recover marks it interrupted
+	stopped := errors.Is(context.Cause(ctx), ErrStopped)
+	if err != nil && ctx.Err() != nil && !stopped {
+		return out, err // orch is stopping: left running, Recover marks it interrupted
 	}
 	if err == nil && a.Quota != nil {
 		if qerr := a.Quota.Record(ctx, j.model, runID, out); qerr != nil {
@@ -291,6 +330,8 @@ func (a *Agents) runAgent(ctx context.Context, j job) (provider.Outcome, error) 
 	}
 	status, outcome := store.RunFailed, string(out.Reason())
 	switch {
+	case stopped:
+		outcome, err = "stopped", ErrStopped
 	case err != nil:
 		outcome = string(engine.ReasonCLIError)
 	case out.Kind == provider.OK:
