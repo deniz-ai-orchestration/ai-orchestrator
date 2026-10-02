@@ -23,7 +23,7 @@ func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, r.Method+" "+r.URL.Path)
-	if r.Header.Get("Authorization") != "Bearer tok" {
+	if r.Header.Get("Authorization") != "Bearer tok" && !strings.HasPrefix(r.URL.Path, "/blob/") {
 		w.WriteHeader(401)
 		return
 	}
@@ -71,6 +71,14 @@ func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		_ = json.NewEncoder(w).Encode([]PullRequest{{Number: 12, State: "open", Body: "Closes #3", Head: Ref{"agent/3-x", "abc"}, Base: Ref{"main", "def"}}})
+	case r.URL.Path == "/repos/o/r/pulls/12":
+		_, _ = w.Write([]byte(`{"number":12,"state":"closed","merged":true,"mergeable":null,"head":{"ref":"agent/3-x","sha":"abc"}}`))
+	case r.URL.Path == "/repos/o/r/commits/abc/check-runs":
+		_, _ = w.Write([]byte(`{"total_count":2,"check_runs":[{"id":77,"name":"go","status":"completed","conclusion":"failure","app":{"slug":"github-actions"}},{"id":78,"name":"lint","status":"in_progress","conclusion":null,"app":{"slug":"other"}}]}`))
+	case r.URL.Path == "/repos/o/r/actions/jobs/77/logs":
+		http.Redirect(w, r, "/blob/log77", http.StatusFound)
+	case r.URL.Path == "/blob/log77":
+		_, _ = w.Write([]byte("line1\nFAIL: TestX\n"))
 	case r.URL.Path == "/repos/o/r/issues/4":
 		w.Header().Set("X-RateLimit-Remaining", "0")
 		w.Header().Set("X-RateLimit-Reset", "1790934600")
@@ -192,5 +200,28 @@ func TestLinksIssue(t *testing.T) {
 		if got := LinksIssue(body, 3); got != want {
 			t.Errorf("LinksIssue(%q) = %v", body, got)
 		}
+	}
+}
+
+func TestPRStateAndChecks(t *testing.T) {
+	c, _ := newTest(t)
+	ctx := context.Background()
+	pr, err := c.GetPR(ctx, "o/r", 12)
+	if err != nil || !pr.Merged || pr.Mergeable != nil || pr.Head.SHA != "abc" {
+		t.Fatalf("pr %+v err %v", pr, err)
+	}
+	runs, err := c.CheckRuns(ctx, "o/r", "abc")
+	if err != nil || len(runs) != 2 {
+		t.Fatalf("runs %+v err %v", runs, err)
+	}
+	if !runs[0].Failed() || !runs[0].IsActions() || runs[1].Failed() || runs[1].IsActions() {
+		t.Fatalf("classification %+v", runs)
+	}
+	log, err := c.JobLog(ctx, "o/r", 77)
+	if err != nil || !strings.Contains(string(log), "FAIL: TestX") {
+		t.Fatalf("log %q err %v", log, err)
+	}
+	if _, err := c.JobLog(ctx, "o/r", 99); err == nil {
+		t.Fatal("missing job log should fail")
 	}
 }

@@ -28,12 +28,20 @@ type fakeAgent struct {
 	stale  int
 	// act runs inside the "container" against the workspace, like the CLI would.
 	act func(ws string)
+	// started, when set, is signalled once the run starts; the run then
+	// blocks until its context ends, like a long agent run.
+	started chan struct{}
 }
 
-func (f *fakeAgent) Run(_ context.Context, s Spec, stdout, _ io.Writer) (Result, error) {
+func (f *fakeAgent) Run(ctx context.Context, s Spec, stdout, _ io.Writer) (Result, error) {
 	f.specs = append(f.specs, s)
 	if f.act != nil {
 		f.act(s.Work)
+	}
+	if f.started != nil {
+		close(f.started)
+		<-ctx.Done()
+		return Result{ExitCode: 137, Killed: true}, nil
 	}
 	_, _ = io.WriteString(stdout, f.stdout)
 	return Result{ExitCode: f.exit, Killed: f.killed}, nil
@@ -77,11 +85,12 @@ func claudeResult(status, summary string) string {
 }
 
 type env struct {
-	dev   *Dev
-	st    *store.Store
-	agent *fakeAgent
-	gh    *fakeGH
-	task  store.Task
+	origin string
+	dev    *Agents
+	st     *store.Store
+	agent  *fakeAgent
+	gh     *fakeGH
+	task   store.Task
 }
 
 func newEnv(t *testing.T, cfgExtra string) *env {
@@ -91,7 +100,7 @@ func newEnv(t *testing.T, cfgExtra string) *env {
 	if err := os.MkdirAll(secrets, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	for name, v := range map[string]string{"github_developer_token": "dev-tok", "claude_oauth_token": "claude-tok"} {
+	for name, v := range map[string]string{"github_developer_token": "dev-tok", "github_reviewer_token": "rev-tok", "claude_oauth_token": "claude-tok"} {
 		if err := os.WriteFile(filepath.Join(secrets, name), []byte(v+"\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -104,11 +113,14 @@ runner: { git_name: deniz-agent, git_email: agent@example.com }
 providers:
   claude: { cli: claude, auth: oauth_token }
   gemini: { cli: agy, auth: keyring }
+  codex:  { cli: codex, auth: auth_json }
 models:
   gem:    { provider: gemini, model: g }
   sonnet: { provider: claude, model: sonnet }
+  sol:    { provider: codex, model: gpt-6.1-sol }
 roles:
   developer: { pool: [gem, sonnet], timeout: 5m }
+  reviewer:  { pool: [sonnet, sol], not_same_as: developer }
 %s`, filepath.Join(dir, "data"), secrets, cfgExtra)))
 	if err != nil {
 		t.Fatal(err)
@@ -121,7 +133,7 @@ roles:
 	origin := originRepo(t)
 	agent := &fakeAgent{t: t}
 	gh := &fakeGH{}
-	d := &Dev{Store: st, GH: gh, Cfg: cfg, Containers: agent,
+	d := &Agents{Store: st, GH: gh, Cfg: cfg, Containers: agent,
 		WS:      Workspaces{Root: filepath.Join(dir, "data", "ws"), CloneURL: func(string) string { return origin }},
 		RunsDir: filepath.Join(dir, "data", "runs"), User: "1000:1000",
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
@@ -129,7 +141,7 @@ roles:
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &env{dev: d, st: st, agent: agent, gh: gh, task: task}
+	return &env{origin: origin, dev: d, st: st, agent: agent, gh: gh, task: task}
 }
 
 func (e *env) state(t *testing.T) store.Task {

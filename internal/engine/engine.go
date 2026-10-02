@@ -85,6 +85,7 @@ const (
 	EvDevDone          EventKind = "dev_done"          // developer pushed; carries Branch, PRNumber, HeadSHA
 	EvDevBlocked       EventKind = "dev_blocked"       // developer returned blocked with a question
 	EvRunFailed        EventKind = "run_failed"        // a run failed; carries Reason
+	EvRunDeferred      EventKind = "run_deferred"      // the model hit a quota or capacity limit; try another model
 	EvPushRejected     EventKind = "push_rejected"     // push validation failed (scope_violation)
 	EvCIPassed         EventKind = "ci_passed"         // CI green on HeadSHA
 	EvCIFailed         EventKind = "ci_failed"         // CI red on HeadSHA
@@ -129,6 +130,7 @@ type Task struct {
 	PRNumber     int
 	HeadSHA      string
 	DevModel     string // model of the last developer run; the reviewer must differ
+	ReviewModel  string // model of the current or last reviewer run
 	UpdatedAt    time.Time
 }
 
@@ -199,6 +201,7 @@ var table = map[State]map[EventKind]handler{
 		EvDevDone:      devDone,
 		EvDevBlocked:   hold(ReasonRequirementsUnclear, Queued),
 		EvRunFailed:    runFailed(Queued),
+		EvRunDeferred:  devDeferred,
 		EvPushRejected: hold(ReasonScopeViolation, Queued),
 	},
 	AwaitingCI: {
@@ -216,6 +219,7 @@ var table = map[State]map[EventKind]handler{
 		EvChangesRequested: changesRequested,
 		EvReviewEscalated:  reviewEscalated,
 		EvRunFailed:        runFailed(ReviewQueued),
+		EvRunDeferred:      reviewDeferred,
 		EvHeadChanged:      headChanged,
 	},
 	ReadyForHuman: {
@@ -315,6 +319,22 @@ func runFailed(resume State) handler {
 	}
 }
 
+// devDeferred puts the task back in the queue when the model was out of
+// quota. The run did no work, so it does not count against dev_runs.
+func devDeferred(t *Task, _ Event, _ config.Limits) ([]Effect, error) {
+	t.State = Queued
+	if t.DevRuns > 0 {
+		t.DevRuns--
+	}
+	return nil, nil
+}
+
+// reviewDeferred puts the task back in the review queue for another model.
+func reviewDeferred(t *Task, _ Event, _ config.Limits) ([]Effect, error) {
+	t.State, t.ReviewModel = ReviewQueued, ""
+	return nil, nil
+}
+
 // staleSHA rejects CI results for a commit that is no longer the head.
 func staleSHA(t *Task, ev Event) error {
 	if ev.HeadSHA != t.HeadSHA {
@@ -348,6 +368,7 @@ func startReview(t *Task, ev Event, _ config.Limits) ([]Effect, error) {
 		return nil, &ErrInvalid{State: t.State, Event: ev.Kind, Why: "reviewer model must differ from developer model " + t.DevModel}
 	}
 	t.State = Reviewing
+	t.ReviewModel = ev.Model
 	return []Effect{{EffStartReviewRun, ""}}, nil
 }
 

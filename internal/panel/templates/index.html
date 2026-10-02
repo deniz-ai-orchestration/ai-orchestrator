@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="htmx-config" content='{"allowEval":false,"includeIndicatorStyles":false,"historyEnabled":false}'>
+<title>orch</title>
+<link rel="stylesheet" href="/static/panel.css">
+<script src="/static/vendor/htmx.min.js"></script>
+<script src="/static/panel.js"></script>
+</head>
+<body>
+<header>
+  <h1>orch</h1>
+  <div id="pause" hx-get="/parts/pause" hx-trigger="every 10s, refresh from:body">{{template "pause" .}}</div>
+  <div id="flash" aria-live="polite"></div>
+</header>
+<main>
+  {{template "agents" .}}
+  {{template "tasks" .}}
+  {{template "roles" .}}
+  {{template "quota" .}}
+</main>
+</body>
+</html>
+
+{{define "pause"}}
+<form class="pause" hx-post="/act" hx-target="#flash" hx-swap="innerHTML">
+  {{if .Paused}}<input type="hidden" name="verb" value="resume"><span class="badge warn">Paused: no new runs start</span><button>Resume all</button>
+  {{else}}<input type="hidden" name="verb" value="pause"><button>Pause all</button>{{end}}
+</form>
+{{end}}
+
+{{define "flash"}}<div class="flash">{{.}}</div>{{end}}
+
+{{define "agents"}}
+<section id="agents" hx-get="/parts/agents" hx-trigger="every 3s, refresh from:body" hx-swap="outerHTML">
+  <h2>Agents</h2>
+  {{if not .Agents}}<p class="muted">No runs yet.</p>{{end}}
+  <div class="cards">
+  {{range .Agents}}
+    <article class="card {{.Status}}">
+      <div class="card-head">
+        <a href="/runs/{{.ID}}">Run {{.ID}}</a>
+        <span class="badge {{.Status}}">{{human .Status}}{{if and .Outcome (ne .Outcome "ok")}}: {{human .Outcome}}{{end}}</span>
+      </div>
+      <div class="meta">{{.Role}}{{if .Work}} ({{human .Work}}){{end}} · {{.Model}} · {{.Elapsed}}</div>
+      {{if .Task.ID}}<div class="meta">Task {{.Task.ID}}: {{.Task.Title}}</div>{{end}}
+      <pre class="preview">{{range .Preview}}<span class="{{lineClass .}}">{{.}}</span>
+{{end}}</pre>
+      {{if .Running}}
+      <form hx-post="/act" hx-target="#flash" hx-swap="innerHTML" hx-confirm="Stop this run? The task will wait for you.">
+        <input type="hidden" name="verb" value="stop"><input type="hidden" name="a" value="{{.TaskID}}">
+        <button class="danger">Stop</button> <a class="button" href="/runs/{{.ID}}">Open terminal</a>
+      </form>
+      {{end}}
+    </article>
+  {{end}}
+  </div>
+</section>
+{{end}}
+
+{{define "tasks"}}
+<section id="tasks" hx-get="/parts/tasks" hx-trigger="every 5s, refresh from:body" hx-swap="outerHTML">
+  <h2>Tasks</h2>
+  {{if not .Tasks}}<p class="muted">No active tasks.</p>{{else}}
+  <div class="table"><table>
+    <thead><tr><th>Task</th><th>Issue</th><th>State</th><th>PR</th><th></th></tr></thead>
+    <tbody>
+    {{range .Tasks}}
+      <tr>
+        <td>{{.ID}}</td>
+        <td><a href="{{.Issue}}" target="_blank" rel="noopener" title="{{.Repo}}">#{{.IssueNumber}}</a> {{.Title}}</td>
+        <td><span class="badge {{.State}}">{{human .State}}</span>{{if .Detail}} <span class="muted">{{human .Detail}}</span>{{end}}</td>
+        <td>{{if .PR}}<a href="{{.PR}}" target="_blank" rel="noopener">#{{.PRNumber}}</a>{{end}}</td>
+        <td class="actions">
+          {{if eq (print .State) "needs_human"}}
+          <form hx-post="/act" hx-target="#flash" hx-swap="innerHTML"><input type="hidden" name="verb" value="retry"><input type="hidden" name="a" value="{{.ID}}"><button>Retry</button></form>
+          {{end}}
+          <form hx-post="/act" hx-target="#flash" hx-swap="innerHTML" hx-confirm="Cancel task {{.ID}}? This ends it."><input type="hidden" name="verb" value="cancel"><input type="hidden" name="a" value="{{.ID}}"><button class="danger">Cancel</button></form>
+        </td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table></div>
+  {{end}}
+</section>
+{{end}}
+
+{{define "roles"}}
+<section id="roles" hx-get="/parts/roles" hx-trigger="every 10s, refresh from:body" hx-swap="outerHTML">
+  <h2>Roles</h2>
+  <div class="table"><table>
+    <thead><tr><th>Role</th><th>Next run uses</th><th>Pool</th><th>Pin</th></tr></thead>
+    <tbody>
+    {{$names := .Names}}
+    {{range .Roles}}
+      <tr>
+        <td>{{human .Name}}</td>
+        <td>{{if not .Enabled}}<span class="muted">role off</span>{{else if .NextOK}}{{.Next}}{{else}}<span class="badge failed" title="{{.Next}}">no model can run</span>{{end}}</td>
+        <td class="muted">{{range $i, $m := .Pool}}{{if $i}}, {{end}}{{$m}}{{end}}</td>
+        <td>
+          {{if and .Enabled (ne .Name "helper")}}
+          <form class="inline" hx-post="/act" hx-target="#flash" hx-swap="innerHTML">
+            <input type="hidden" name="verb" value="use"><input type="hidden" name="a" value="{{.Name}}">
+            {{$pin := .Pin}}
+            <select name="b" aria-label="Pin {{.Name}}">
+              <option value="auto"{{if not $pin}} selected{{end}}>auto</option>
+              {{range $names}}<option value="{{.}}"{{if eq . $pin}} selected{{end}}>{{.}}</option>{{end}}
+            </select>
+            <button>Set</button>
+          </form>
+          {{end}}
+        </td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table></div>
+</section>
+{{end}}
+
+{{define "quota"}}
+<section id="quota" hx-get="/parts/quota" hx-trigger="every 10s, refresh from:body" hx-swap="outerHTML">
+  <h2>Models and quota</h2>
+  <div class="table"><table>
+    <thead><tr><th>Model</th><th>Provider</th><th>State</th><th>Runs in 5h</th><th>Pinned for</th><th>Last limit</th><th></th></tr></thead>
+    <tbody>
+    {{range .Models}}
+      <tr>
+        <td title="{{.ModelID}}">{{.Name}}</td>
+        <td>{{.Provider}}</td>
+        <td><span class="badge q-{{.Key}}">{{.State}}</span></td>
+        <td>{{.Runs}}</td>
+        <td>{{.PinnedFor}}</td>
+        <td class="muted">{{.Last}}</td>
+        <td>
+          <form hx-post="/act" hx-target="#flash" hx-swap="innerHTML">
+            <input type="hidden" name="a" value="{{.Name}}">
+            {{if .On}}<input type="hidden" name="verb" value="disable"><button>Switch off</button>
+            {{else}}<input type="hidden" name="verb" value="enable"><button>Switch on</button>{{end}}
+          </form>
+        </td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table></div>
+</section>
+{{end}}

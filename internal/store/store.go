@@ -120,7 +120,7 @@ func (s *Store) CreateTask(ctx context.Context, repo string, issue int, title, b
 }
 
 const taskCols = `id, repo, issue_number, title, body, state, work, reason, resume_state, resume_work,
-	ci_attempts, review_cycles, dev_runs, branch, pr_number, head_sha, dev_model, created_at, updated_at`
+	ci_attempts, review_cycles, dev_runs, branch, pr_number, head_sha, dev_model, review_model, created_at, updated_at`
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -129,7 +129,7 @@ func scanTask(row scanner) (Task, error) {
 	var created, updated string
 	err := row.Scan(&t.ID, &t.Repo, &t.IssueNumber, &t.Title, &t.Body, &t.State, &t.Work, &t.Reason,
 		&t.ResumeState, &t.ResumeWork, &t.CIAttempts, &t.ReviewCycles, &t.DevRuns, &t.Branch,
-		&t.PRNumber, &t.HeadSHA, &t.DevModel, &created, &updated)
+		&t.PRNumber, &t.HeadSHA, &t.DevModel, &t.ReviewModel, &created, &updated)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Task{}, ErrNotFound
 	}
@@ -207,10 +207,10 @@ func (s *Store) ApplyEvent(ctx context.Context, taskID int64, ev engine.Event, l
 	_, err = tx.ExecContext(ctx, `
 		UPDATE tasks SET state = ?, work = ?, reason = ?, resume_state = ?, resume_work = ?,
 			ci_attempts = ?, review_cycles = ?, dev_runs = ?, branch = ?, pr_number = ?,
-			head_sha = ?, dev_model = ?, updated_at = ?, version = version + 1
+			head_sha = ?, dev_model = ?, review_model = ?, updated_at = ?, version = version + 1
 		WHERE id = ?`,
 		n.State, n.Work, n.Reason, n.ResumeState, n.ResumeWork, n.CIAttempts, n.ReviewCycles,
-		n.DevRuns, n.Branch, n.PRNumber, n.HeadSHA, n.DevModel, fmtTime(n.UpdatedAt), taskID)
+		n.DevRuns, n.Branch, n.PRNumber, n.HeadSHA, n.DevModel, n.ReviewModel, fmtTime(n.UpdatedAt), taskID)
 	if err != nil {
 		return engine.Result{}, fmt.Errorf("update task: %w", err)
 	}
@@ -306,4 +306,16 @@ func (s *Store) exec1(ctx context.Context, q string, args ...any) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// LastDetail returns the detail of the task's most recent transition caused
+// by ev, or "" when there is none.
+func (s *Store) LastDetail(ctx context.Context, taskID int64, ev engine.EventKind) (string, error) {
+	var d string
+	err := s.db.QueryRowContext(ctx, `SELECT detail FROM transitions WHERE task_id = ? AND event = ? ORDER BY id DESC LIMIT 1`,
+		taskID, ev).Scan(&d)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return d, err
 }

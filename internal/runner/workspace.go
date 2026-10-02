@@ -79,3 +79,13 @@ func (w Workspaces) Prepare(ctx context.Context, taskID int64, kind, repo, branc
 func (w Workspaces) Remove(taskID int64) error {
 	return os.RemoveAll(filepath.Join(w.Root, fmt.Sprintf("task-%d", taskID)))
 }
+
+// Detach checks out commit sha in a prepared workspace, so a reviewer sees
+// exactly the commit CI passed even if the branch moved since.
+func (w Workspaces) Detach(ctx context.Context, dir, sha string) error {
+	out, err := exec.CommandContext(ctx, "git", "-C", dir, "checkout", "--quiet", "--detach", sha).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git checkout %s: %v: %s", sha, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}

@@ -14,25 +14,40 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"text/tabwriter"
 	"time"
 
+	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/ci"
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/config"
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/effects"
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/github"
+	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/helper"
+	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/panel"
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/poller"
+	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/quota"
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/runner"
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/store"
+	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/telegram"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
 var version = "dev"
 
-const usage = `usage: orch [-config path] <command>
+const usage = `usage: orch [-config path] <command> [args]
 
 commands:
-  run           start the orchestrator (blocks until SIGINT/SIGTERM)
-  check-config  load and validate the config, then exit
-  version       print the version
+  run                    start the orchestrator (blocks until SIGINT/SIGTERM)
+  check-config           load and validate the config, then exit
+  status                 list active tasks
+  why <task>             show a task's history
+  retry <task>           resume a task held in needs_human
+  cancel <task>          end a task
+  pause, resume          stop or restart starting new runs
+  quota                  show every model's state, runs in 5h and last limit
+  use <role> <model>     pin a role to a model ("auto" removes the pin)
+  enable <model>         switch a model back on and clear its cooldown
+  disable <model>        switch a model off
+  version                print the version
 `
 
 func main() {
@@ -50,9 +65,16 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if fs.NArg() != 1 {
+	if fs.NArg() < 1 {
 		fs.Usage()
-		return errors.New("expected exactly one command")
+		return errors.New("expected a command")
+	}
+	args = fs.Args()[1:]
+	nargs := map[string]int{"run": 0, "check-config": 0, "version": 0, "quota": 0, "use": 2, "enable": 1, "disable": 1,
+		"status": 0, "why": 1, "retry": 1, "cancel": 1, "pause": 0, "resume": 0}
+	if n, ok := nargs[fs.Arg(0)]; ok && len(args) != n {
+		fs.Usage()
+		return fmt.Errorf("%s takes %d argument(s)", fs.Arg(0), n)
 	}
 
 	switch cmd := fs.Arg(0); cmd {
@@ -73,15 +95,21 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 			return err
 		}
 		return serve(ctx, cfg, stderr)
+	case "quota", "use", "enable", "disable", "status", "why", "retry", "cancel", "pause", "resume":
+		cfg, err := config.Load(*cfgPath)
+		if err != nil {
+			return err
+		}
+		return models(ctx, cfg, cmd, args, stdout)
 	default:
 		fs.Usage()
 		return fmt.Errorf("unknown command %q", cmd)
 	}
 }
 
-// serve opens the store and runs the GitHub poller, the label mirror and
-// the developer runner until a shutdown signal. Later milestones add the
-// reviewer, Telegram and the control panel here.
+// serve opens the store and runs the GitHub poller, the label mirror, the
+// agent runner (developer and reviewer), the PR/CI follower and the
+// Telegram bot, and the control panel when enabled, until a shutdown signal.
 func serve(ctx context.Context, cfg *config.Config, logOut io.Writer) error {
 	log := slog.New(slog.NewJSONHandler(logOut, nil))
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
@@ -104,18 +132,46 @@ func serve(ctx context.Context, cfg *config.Config, logOut io.Writer) error {
 	gh := github.New(token)
 	p := &poller.Poller{Store: st, GH: gh, Cfg: cfg.GitHub, Log: log.With("component", "poller")}
 	labels := &effects.Labels{Store: st, GH: gh, Log: log.With("component", "labels"), Interval: 5 * time.Second}
-	dev := &runner.Dev{Store: st, GH: gh, Cfg: cfg, Containers: runner.Docker{},
+	tracker := &quota.Tracker{Store: st, Cfg: cfg}
+	agents := &runner.Agents{Store: st, GH: gh, Cfg: cfg, Containers: runner.Docker{},
 		WS:       runner.Workspaces{Root: filepath.Join(cfg.DataDir, "ws")},
 		RunsDir:  filepath.Join(cfg.DataDir, "runs"),
 		User:     fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
-		Interval: 10 * time.Second, Log: log.With("component", "developer")}
-	if err := dev.Recover(context.WithoutCancel(ctx)); err != nil {
+		Interval: 10 * time.Second, Log: log.With("component", "agents"),
+		Quota: &quota.Tracker{Store: st, Cfg: cfg},
+		ReviewGH: func() (runner.Commenter, error) {
+			t, err := readSecret(cfg.SecretsDir, "github_reviewer_token")
+			if err != nil {
+				return nil, err
+			}
+			return github.New(t), nil
+		}}
+	follower := &ci.Follower{Store: st, GH: gh, Helper: helper.FromConfig(cfg), Cfg: cfg,
+		Interval: cfg.GitHub.PollInterval, Log: log.With("component", "ci")}
+	if err := agents.Recover(context.WithoutCancel(ctx)); err != nil {
 		log.Error("runner recovery failed; is Docker running?", "err", err)
+	}
+	bot := &telegram.Bot{Store: st, Cfg: cfg, Quota: tracker, Agents: agents, Log: log.With("component", "telegram")}
+	runBot := bot.RunNotifications
+	if cfg.Telegram.Enabled {
+		tok, err := readSecret(cfg.SecretsDir, "telegram_token")
+		if err != nil {
+			return err
+		}
+		bot.API, runBot = telegram.New(tok), bot.Run
+	} else {
+		bot.API = telegram.LogAPI{Log: bot.Log}
+	}
+	loops := []func(context.Context) error{p.Run, labels.Run, agents.Run, follower.Run, runBot}
+	if cfg.Panel.Enabled {
+		ui := &panel.Server{Store: st, Cfg: cfg, Quota: tracker, Agents: agents, Log: log.With("component", "panel"),
+			Commands: &telegram.Bot{Store: st, Cfg: cfg, Quota: tracker, Agents: agents, Source: "the panel"}}
+		loops = append(loops, ui.Run)
 	}
 
 	log.Info("orch starting", "version", version, "data_dir", cfg.DataDir, "repos", cfg.GitHub.Repos)
 	var wg sync.WaitGroup
-	for _, run := range []func(context.Context) error{p.Run, labels.Run, dev.Run} {
+	for _, run := range loops {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -126,6 +182,70 @@ func serve(ctx context.Context, cfg *config.Config, logOut io.Writer) error {
 	wg.Wait()
 	log.Info("orch stopped")
 	return nil
+}
+
+// models runs the model-management commands against orch's database. They
+// work while orch runs: SQLite serializes the writes.
+func models(ctx context.Context, cfg *config.Config, cmd string, args []string, out io.Writer) error {
+	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
+		return fmt.Errorf("data dir: %w", err)
+	}
+	st, err := store.Open(ctx, filepath.Join(cfg.DataDir, "orch.db"))
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	tr := &quota.Tracker{Store: st, Cfg: cfg}
+	switch cmd {
+	case "status", "why", "retry", "cancel", "pause", "resume":
+		// Same handlers as the Telegram commands. A cancel from here cannot
+		// reach the running orch's container; its run ends on its own.
+		bot := &telegram.Bot{Store: st, Cfg: cfg, Quota: tr, Source: "the CLI"}
+		fmt.Fprintln(out, bot.Command(ctx, "/"+cmd+" "+strings.Join(args, " ")))
+		return nil
+	case "use":
+		if err := tr.Pin(ctx, args[0], args[1]); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "%s: %s\n", args[0], args[1])
+		return nil
+	case "enable", "disable":
+		if err := tr.SetEnabled(ctx, args[0], cmd == "enable"); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "%s %sd\n", args[0], cmd)
+		return nil
+	}
+	rep, err := tr.Report(ctx)
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "MODEL\tPROVIDER\tSTATE\tRUNS/5H\tPINNED\tLAST LIMIT")
+	for _, s := range rep {
+		state := s.State(now)
+		if state == "cooling" {
+			state += " until " + s.CoolingUntil.Local().Format("Jan 2 15:04")
+		}
+		runs := fmt.Sprint(s.RunsIn5h)
+		if s.Budget > 0 {
+			runs += fmt.Sprintf("/%d", s.Budget)
+		}
+		last := "-"
+		if s.Last != nil {
+			last = s.Last.Kind + " " + s.Last.At.Local().Format("Jan 2 15:04")
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", s.Name, s.Provider, state, runs, dash(strings.Join(s.PinnedFor, ",")), last)
+	}
+	return w.Flush()
+}
+
+func dash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
 }
 
 // readSecret reads one credential file from the secrets directory.

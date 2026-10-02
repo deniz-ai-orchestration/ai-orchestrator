@@ -103,6 +103,35 @@ func (c *Client) do(ctx context.Context, method, path, etag string, in, out any)
 	return resp.Header.Get("ETag"), nil
 }
 
+// raw sends a GET and returns the body as is. Redirects are followed; Go
+// drops the Authorization header when one leaves api.github.com, so log
+// downloads from blob storage never see the token.
+func (c *Client) raw(ctx context.Context, path string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", c.BaseURL+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("User-Agent", "orch")
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case isRateLimited(resp):
+		return nil, &RateLimitError{Reset: resetTime(resp)}
+	case resp.StatusCode >= 300:
+		return nil, &APIError{Status: resp.StatusCode, Body: truncate(string(body), 500)}
+	}
+	return body, nil
+}
+
 func isRateLimited(resp *http.Response) bool {
 	if resp.StatusCode == http.StatusTooManyRequests {
 		return true

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"time"
 )
 
 // Run statuses.
@@ -25,6 +26,8 @@ type Run struct {
 	Status   string
 	Outcome  string
 	LogDir   string
+	// StartedAt and EndedAt are zero while unknown (EndedAt while running).
+	StartedAt, EndedAt time.Time
 }
 
 // StartRun records a run as running and returns its id.
@@ -77,11 +80,32 @@ func (s *Store) InterruptRunning(ctx context.Context) (int64, error) {
 	return res.RowsAffected()
 }
 
+const runCols = `id, task_id, outbox_id, role, work, provider, model, status, outcome, log_dir, started_at, ended_at`
+
 // RunsForOutbox returns the runs started for one outbox item, oldest first.
 func (s *Store) RunsForOutbox(ctx context.Context, outboxID int64) ([]Run, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, task_id, outbox_id, role, work, provider, model, status, outcome, log_dir
-		FROM runs WHERE outbox_id = ? ORDER BY id`, outboxID)
+	return s.queryRuns(ctx, `SELECT `+runCols+` FROM runs WHERE outbox_id = ? ORDER BY id`, outboxID)
+}
+
+// RecentRuns returns the newest runs, newest first.
+func (s *Store) RecentRuns(ctx context.Context, limit int) ([]Run, error) {
+	return s.queryRuns(ctx, `SELECT `+runCols+` FROM runs ORDER BY id DESC LIMIT ?`, limit)
+}
+
+// GetRun returns one run, or ErrNotFound.
+func (s *Store) GetRun(ctx context.Context, id int64) (Run, error) {
+	runs, err := s.queryRuns(ctx, `SELECT `+runCols+` FROM runs WHERE id = ?`, id)
+	if err != nil {
+		return Run{}, err
+	}
+	if len(runs) == 0 {
+		return Run{}, ErrNotFound
+	}
+	return runs[0], nil
+}
+
+func (s *Store) queryRuns(ctx context.Context, q string, args ...any) ([]Run, error) {
+	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -90,10 +114,18 @@ func (s *Store) RunsForOutbox(ctx context.Context, outboxID int64) ([]Run, error
 	for rows.Next() {
 		var r Run
 		var task, ob sql.NullInt64
-		if err := rows.Scan(&r.ID, &task, &ob, &r.Role, &r.Work, &r.Provider, &r.Model, &r.Status, &r.Outcome, &r.LogDir); err != nil {
+		var started, ended sql.NullString
+		if err := rows.Scan(&r.ID, &task, &ob, &r.Role, &r.Work, &r.Provider, &r.Model, &r.Status, &r.Outcome, &r.LogDir,
+			&started, &ended); err != nil {
 			return nil, err
 		}
 		r.TaskID, r.OutboxID = task.Int64, ob.Int64
+		if started.Valid {
+			r.StartedAt, _ = parseTime(started.String)
+		}
+		if ended.Valid {
+			r.EndedAt, _ = parseTime(ended.String)
+		}
 		out = append(out, r)
 	}
 	return out, rows.Err()

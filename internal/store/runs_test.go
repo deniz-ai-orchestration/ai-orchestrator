@@ -54,3 +54,37 @@ func TestRunLifecycle(t *testing.T) {
 		t.Fatalf("runs %+v", runs)
 	}
 }
+
+func TestRecentAndGetRun(t *testing.T) {
+	s, _ := open(t)
+	ctx := context.Background()
+	task, err := s.CreateTask(ctx, "o/r", 1, "t", "b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []int64
+	for _, role := range []string{"developer", "reviewer", "developer"} {
+		id, err := s.StartRun(ctx, Run{TaskID: task.ID, Role: role, Provider: "claude", Model: "m"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	if err := s.FinishRun(ctx, ids[0], RunSucceeded, "ok", 0, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	runs, err := s.RecentRuns(ctx, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 2 || runs[0].ID != ids[2] || runs[1].Role != "reviewer" || runs[0].StartedAt.IsZero() || !runs[0].EndedAt.IsZero() {
+		t.Fatalf("recent %+v", runs)
+	}
+	r, err := s.GetRun(ctx, ids[0])
+	if err != nil || r.Status != RunSucceeded || r.EndedAt.IsZero() || r.TaskID != task.ID {
+		t.Fatalf("get %+v, err %v", r, err)
+	}
+	if _, err := s.GetRun(ctx, 99); err != ErrNotFound {
+		t.Fatalf("missing run: %v", err)
+	}
+}
