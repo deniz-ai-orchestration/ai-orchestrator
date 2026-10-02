@@ -22,7 +22,8 @@ type Choice struct {
 
 // Options narrow the pick.
 type Options struct {
-	// Avoid is never picked (the developer's model when picking a reviewer).
+	// Avoid is not picked from the pool (the developer's model when picking
+	// a reviewer). A pin to it still wins: you chose it on purpose.
 	Avoid string
 	// Usable rejects providers that cannot run here (no container support).
 	Usable func(config.Provider) bool
@@ -34,7 +35,7 @@ type Options struct {
 }
 
 // Pick returns the pinned model when it can run, else the first model in
-// the role's pool that can. The error lists why each model was passed over.
+// the role's pool that can, other than Avoid. The error lists why each model was passed over.
 func Pick(cfg *config.Config, role string, o Options) (Choice, error) {
 	r, ok := cfg.Roles[role]
 	if !ok {
@@ -44,7 +45,7 @@ func Pick(cfg *config.Config, role string, o Options) (Choice, error) {
 		return Choice{}, fmt.Errorf("role %q is disabled", role)
 	}
 	var why []string
-	check := func(name string) (Choice, bool) {
+	check := func(name string, pinned bool) (Choice, bool) {
 		m, ok := cfg.Models[name]
 		if !ok {
 			why = append(why, name+": not in the config")
@@ -53,7 +54,7 @@ func Pick(cfg *config.Config, role string, o Options) (Choice, error) {
 		p := cfg.Providers[m.Provider]
 		reason := ""
 		switch {
-		case name == o.Avoid:
+		case name == o.Avoid && !pinned:
 			reason = "same model as the developer"
 		case m.Disabled || p.Disabled:
 			reason = "disabled in the config"
@@ -71,7 +72,7 @@ func Pick(cfg *config.Config, role string, o Options) (Choice, error) {
 		return Choice{Name: name, Model: m, Provider: p}, true
 	}
 	if o.Pin != "" {
-		if c, ok := check(o.Pin); ok {
+		if c, ok := check(o.Pin, true); ok {
 			c.Pinned = true
 			return c, nil
 		}
@@ -80,7 +81,7 @@ func Pick(cfg *config.Config, role string, o Options) (Choice, error) {
 		if name == o.Pin {
 			continue
 		}
-		if c, ok := check(name); ok {
+		if c, ok := check(name, false); ok {
 			return c, nil
 		}
 	}

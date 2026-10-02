@@ -175,8 +175,8 @@ func (t *Tracker) Report(ctx context.Context) ([]Status, error) {
 	return out, nil
 }
 
-// Pin pins role to model ("" or "auto" removes the pin). The not_same_as
-// rule is still enforced when a model is picked.
+// Pin pins role to model ("" or "auto" removes the pin). A pin overrides
+// not_same_as: a reviewer pinned to the developer's model uses it.
 func (t *Tracker) Pin(ctx context.Context, role, model string) error {
 	if _, ok := t.Cfg.Roles[role]; !ok {
 		return fmt.Errorf("unknown role %q", role)

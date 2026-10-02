@@ -148,8 +148,10 @@ func TestIndex(t *testing.T) {
 		`id="agents"`, `id="tasks"`, `id="roles"`, `id="quota"`, "Pause all",
 		"Run 1", "▸ Edit /tmp/orch-scratch/main.go", "■ success", // card preview
 		`title="o/r">#7</a>`, "developing", // task row
-		"codex-sol", "<td>ollama-local</td>", // next models
-		`value="claude-opus"`,
+		"codex-sol", "<td>ollama-local <span", // next models
+		`<option value="claude">claude</option>`,                                  // provider selector
+		`<option value="claude-opus" data-provider="claude" title="opus" hidden>`, // models of other providers hidden
+		`<option value="auto" data-provider="" selected>first available</option>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("index lacks %q", want)
@@ -160,6 +162,30 @@ func TestIndex(t *testing.T) {
 	}
 	if strings.Contains(body, "session started") {
 		t.Error("preview should keep only the last lines")
+	}
+}
+
+func TestRolePickerShowsPin(t *testing.T) {
+	e := newEnv(t)
+	if code, _, _ := e.post(t, e.srv.URL, url.Values{"verb": {"use"}, "a": {"reviewer"}, "b": {"claude-opus"}}); code != http.StatusOK {
+		t.Fatal(code)
+	}
+	// The fake commander does not pin, so pin through the store directly.
+	if err := e.st.SetPin(context.Background(), "reviewer", "claude-opus"); err != nil {
+		t.Fatal(err)
+	}
+	_, _, body := e.get(t, "/parts/roles")
+	for _, want := range []string{
+		`<option value="claude" selected>claude</option>`,
+		`<option value="claude-opus" data-provider="claude" title="opus" selected>`,
+		`<option value="auto" data-provider="" hidden>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("roles lack %q", want)
+		}
+	}
+	if strings.Contains(body, `value="ollama-local" data-provider`) {
+		t.Error("a model without a CLI is offered")
 	}
 }
 

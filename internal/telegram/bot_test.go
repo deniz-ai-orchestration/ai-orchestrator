@@ -200,7 +200,7 @@ func TestCommands(t *testing.T) {
 		{"/why x", "is not a task number"},
 		{"/why 99", "task 99"},
 		{"/models", "reviewer: sol > sonnet"},
-		{"/use reviewer sonnet", "reviewer is pinned to sonnet"},
+		{"/use reviewer sonnet", "reviewer now uses sonnet"},
 		{"/models", "(pinned: sonnet)"},
 		{"/use reviewer", "usage: /use"},
 		{"/use reviewer ghost", `unknown model "ghost"`},
