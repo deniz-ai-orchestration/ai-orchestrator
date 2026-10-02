@@ -8,7 +8,10 @@ The components live under `internal/`, one package each, filled in milestone
 by milestone. Today `orch run` watches GitHub for the trigger label, mirrors
 task state as `orch:*` labels, runs the developer agent in a container until
 it has opened a PR, and follows the PR: on red CI it fetches the failed job
-log, has Ollama summarize it, and starts a fix run (milestones M1 to M4).
+log, has Ollama summarize it, and starts a fix run. On green CI a reviewer
+agent (never the developer's model) reviews the head commit read-only; orch
+posts its verdict on the PR and sends blocking findings back to the developer
+(milestones M1 to M5).
 
 ## Commands
 
@@ -34,9 +37,10 @@ docker build -t orch-agent:latest docker/agent
 - Run `orch` as your normal user (not root) in the `docker` group. Containers
   run with your uid, so they can write the workspace, and Claude Code refuses
   `bypassPermissions` as root.
-- The developer run needs `github_developer_token` and the provider's
-  credential (for Claude, `claude_oauth_token`) in `secrets_dir`, and orch
-  itself needs `github_orch_token`. Tokens reach the container as environment
+- The developer run needs `github_developer_token`, the reviewer run
+  `github_reviewer_token`, each with its provider's credential (for Claude,
+  `claude_oauth_token`; Codex reads `auth.json` from the `orch-codex-home`
+  Docker volume) in `secrets_dir`, and orch itself needs `github_orch_token`. Tokens reach the container as environment
   variables passed by name, never on a command line.
 - Workspaces are in `<data_dir>/ws/task-<id>/dev`; each run keeps its prompt,
   stdout and stderr in `<data_dir>/runs/<run id>/`.

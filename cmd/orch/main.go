@@ -82,8 +82,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 }
 
 // serve opens the store and runs the GitHub poller, the label mirror, the
-// developer runner and the PR/CI follower until a shutdown signal. Later
-// milestones add the reviewer, Telegram and the control panel here.
+// agent runner (developer and reviewer) and the PR/CI follower until a
+// shutdown signal. Later milestones add Telegram and the control panel.
 func serve(ctx context.Context, cfg *config.Config, logOut io.Writer) error {
 	log := slog.New(slog.NewJSONHandler(logOut, nil))
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
@@ -106,20 +106,27 @@ func serve(ctx context.Context, cfg *config.Config, logOut io.Writer) error {
 	gh := github.New(token)
 	p := &poller.Poller{Store: st, GH: gh, Cfg: cfg.GitHub, Log: log.With("component", "poller")}
 	labels := &effects.Labels{Store: st, GH: gh, Log: log.With("component", "labels"), Interval: 5 * time.Second}
-	dev := &runner.Dev{Store: st, GH: gh, Cfg: cfg, Containers: runner.Docker{},
+	agents := &runner.Agents{Store: st, GH: gh, Cfg: cfg, Containers: runner.Docker{},
 		WS:       runner.Workspaces{Root: filepath.Join(cfg.DataDir, "ws")},
 		RunsDir:  filepath.Join(cfg.DataDir, "runs"),
 		User:     fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
-		Interval: 10 * time.Second, Log: log.With("component", "developer")}
+		Interval: 10 * time.Second, Log: log.With("component", "agents"),
+		ReviewGH: func() (runner.Commenter, error) {
+			t, err := readSecret(cfg.SecretsDir, "github_reviewer_token")
+			if err != nil {
+				return nil, err
+			}
+			return github.New(t), nil
+		}}
 	follower := &ci.Follower{Store: st, GH: gh, Helper: helper.FromConfig(cfg), Cfg: cfg,
 		Interval: cfg.GitHub.PollInterval, Log: log.With("component", "ci")}
-	if err := dev.Recover(context.WithoutCancel(ctx)); err != nil {
+	if err := agents.Recover(context.WithoutCancel(ctx)); err != nil {
 		log.Error("runner recovery failed; is Docker running?", "err", err)
 	}
 
 	log.Info("orch starting", "version", version, "data_dir", cfg.DataDir, "repos", cfg.GitHub.Repos)
 	var wg sync.WaitGroup
-	for _, run := range []func(context.Context) error{p.Run, labels.Run, dev.Run, follower.Run} {
+	for _, run := range []func(context.Context) error{p.Run, labels.Run, agents.Run, follower.Run} {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

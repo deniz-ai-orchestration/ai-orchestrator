@@ -129,6 +129,7 @@ type Task struct {
 	PRNumber     int
 	HeadSHA      string
 	DevModel     string // model of the last developer run; the reviewer must differ
+	ReviewModel  string // model of the current or last reviewer run
 	UpdatedAt    time.Time
 }
 
@@ -348,6 +349,7 @@ func startReview(t *Task, ev Event, _ config.Limits) ([]Effect, error) {
 		return nil, &ErrInvalid{State: t.State, Event: ev.Kind, Why: "reviewer model must differ from developer model " + t.DevModel}
 	}
 	t.State = Reviewing
+	t.ReviewModel = ev.Model
 	return []Effect{{EffStartReviewRun, ""}}, nil
 }
 
