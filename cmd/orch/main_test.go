@@ -10,12 +10,14 @@ import (
 )
 
 func TestVersion(t *testing.T) {
-	var out bytes.Buffer
-	if err := run(context.Background(), []string{"version"}, &out, &bytes.Buffer{}); err != nil {
-		t.Fatal(err)
-	}
-	if strings.TrimSpace(out.String()) != version {
-		t.Errorf("got %q", out.String())
+	for _, arg := range []string{"version", "--version", "-v"} {
+		var out bytes.Buffer
+		if err := run(context.Background(), []string{arg}, &out, &bytes.Buffer{}); err != nil {
+			t.Fatal(arg, err)
+		}
+		if strings.TrimSpace(out.String()) != version {
+			t.Errorf("%s: got %q", arg, out.String())
+		}
 	}
 }
 
