@@ -5,8 +5,8 @@ import (
 	"strings"
 )
 
-// Flags follow the architecture doc and the CLIs' docs as of 2026-10-02.
-// They are confirmed against real runs on PC2 before the parsers land.
+// Flags were checked against real runs on PC2 on 2026-10-02 (claude 2.1.287,
+// codex-cli 0.160.0, agy 1.2.14, opencode 1.18.34); see testdata/fixtures.
 
 func init() {
 	register(claude{})
@@ -26,7 +26,10 @@ func (claude) Build(r Request) (Command, error) {
 	}
 	argv := []string{"claude", "-p", "--model", r.Model,
 		"--output-format", "stream-json", "--verbose",
-		"--permission-mode", "bypassPermissions"}
+		"--permission-mode", "bypassPermissions",
+		// Keep the account's claude.ai connectors, user skills and plugins
+		// out of agent runs; only the repo's own settings apply.
+		"--strict-mcp-config", "--setting-sources", "project"}
 	if r.SchemaPath != "" {
 		argv = append(argv, "--json-schema", r.SchemaPath)
 	}
@@ -34,6 +37,8 @@ func (claude) Build(r Request) (Command, error) {
 		argv = append(argv, "--max-turns", strconv.Itoa(r.MaxTurns))
 	}
 	if r.ReadOnly {
+		// Not a sandbox: Bash stays available. The real guard is the
+		// read-only GitHub token and the throwaway container.
 		argv = append(argv, "--disallowedTools", "Edit,Write,NotebookEdit")
 	}
 	return Command{
@@ -76,7 +81,9 @@ func (codex) Build(r Request) (Command, error) {
 }
 
 // agy drives Google's Antigravity CLI (Google AI Pro). Its login lives in
-// the OS keyring; how that reaches a container is decided in Phase 0.
+// the OS keyring; how that reaches a container is decided in Phase 0. agy
+// does not read stdin, so the prompt must be an argument (bounded by
+// ARG_MAX and visible in ps inside the container).
 type agy struct{}
 
 func (agy) CLI() string { return "agy" }
@@ -92,7 +99,8 @@ func (agy) Build(r Request) (Command, error) {
 }
 
 // opencode drives OpenCode with the OpenCode Go plan's API key. Models are
-// always fully qualified as opencode-go/<model>.
+// always fully qualified as opencode-go/<model>. Stored auth under
+// XDG_DATA_HOME beats OPENCODE_API_KEY, so every run gets its own data dir.
 type opencode struct{}
 
 func (opencode) CLI() string { return "opencode" }
@@ -106,12 +114,17 @@ func (opencode) Build(r Request) (Command, error) {
 		model = "opencode-go/" + model
 	}
 	argv := []string{"opencode", "run", "--format", "json", "--model", model}
-	if r.Agent != "" {
-		argv = append(argv, "--agent", r.Agent)
+	agent := r.Agent
+	if agent == "" && r.ReadOnly {
+		agent = "plan" // opencode's built-in read-only agent
 	}
-	argv = append(argv, r.Prompt)
+	if agent != "" {
+		argv = append(argv, "--agent", agent)
+	}
 	return Command{
 		Argv:      argv,
+		Stdin:     r.Prompt,
+		Env:       map[string]string{"XDG_DATA_HOME": "/home/agent/.local/share/orch-run"},
 		SecretEnv: map[string]string{"OPENCODE_API_KEY": "opencode_api_key"},
 	}, nil
 }

@@ -1,0 +1,1 @@
+agy -p Before\ changing\ anything\,\ I\ need\ you\ to\ ask\ me\ which\ package\ name\ I\ want.\ Do\ not\ edit\ any\ files\;\ just\ ask\ the\ question\ and\ stop. --model gemini-3.1-pro-high --output-format stream-json 

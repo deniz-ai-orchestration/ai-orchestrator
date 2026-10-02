@@ -1,0 +1,2 @@
+codex exec --json -m gpt-6.1-sol --sandbox read-only - 
+stdin: Read main.go and explain in one sentence what it prints. Do not modify any files.
