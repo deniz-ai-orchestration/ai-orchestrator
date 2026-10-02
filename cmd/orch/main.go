@@ -44,7 +44,7 @@ commands:
   cancel <task>          end a task
   pause, resume          stop or restart starting new runs
   quota                  show every model's state, runs in 5h and last limit
-  use <role> <model>     pin a role to a model ("auto" removes the pin)
+  use <role> <model>     choose a role's model ("auto" = its fallback order)
   enable <model>         switch a model back on and clear its cooldown
   disable <model>        switch a model off
   version                print the version (also --version, -v)

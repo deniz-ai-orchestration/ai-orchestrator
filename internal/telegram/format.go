@@ -115,7 +115,7 @@ const help = `orch commands:
 /cancel <task> — end a task (stops its run)
 /quota — each model's state and limits
 /models — roles, pools and pins
-/use <role> <model|auto> — pin a role to a model
+/use <role> <model|auto> — choose a role's model ("auto" = fallback order)
 /enable <model>, /disable <model>
 /pause, /resume — stop or restart starting new runs`
 
@@ -194,9 +194,9 @@ func (b *Bot) command(ctx context.Context, cmd string, args []string) (string, e
 			return "", err
 		}
 		if args[1] == "auto" {
-			return fmt.Sprintf("%s picks from its pool again.", args[0]), nil
+			return fmt.Sprintf("%s uses the first available model in its fallback order again.", args[0]), nil
 		}
-		return fmt.Sprintf("%s is pinned to %s while it can run.", args[0], args[1]), nil
+		return fmt.Sprintf("%s now uses %s. If it cannot run, the fallback order takes over.", args[0], args[1]), nil
 	case "enable", "disable":
 		if err := need(1, "/"+cmd+" <model>"); err != nil {
 			return "", err

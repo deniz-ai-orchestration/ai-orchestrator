@@ -13,8 +13,10 @@ agent (never the developer's model) reviews the head commit read-only; orch
 posts its verdict on the PR and sends blocking findings back to the developer
 (milestones M1 to M5).
 
-Models are picked per role from the ranked pool in `config.yaml`: a pin
-(`orch use`) wins while its model can run. A model that hits its quota cools
+Models are picked per role from the ranked pool in `config.yaml`, or you
+choose one (`orch use`, or the provider and model selectors in the panel).
+A chosen model wins while it can run, even if it is the developer's model
+for a reviewer; otherwise the pool's fallback order applies. A model that hits its quota cools
 down until the reset time the CLI reports (else 1h, 2h, then 4h) and the task
 goes back to the queue for the next model, without using up a developer run.
 An auth failure switches off every model of that provider until
@@ -35,7 +37,7 @@ agent), `/quota`, `/models`, `/use`, `/enable`, `/disable`, `/pause`,
 With `panel.enabled: true`, orch serves a control panel on `panel.listen`
 (PC2's LAN address; open it by IP, not by a DNS name). It shows one card per
 recent agent run with its last lines, the active tasks with Retry and Cancel,
-each role's pool, pin and the model its next run would use, and each model's
+each role's provider and model selectors, fallback order and the model its next run would use, and each model's
 quota state with a switch. Pause all stops new runs from starting, and Stop
 ends a running agent (the task then waits for Retry). Each run has a live,
 view-only terminal of what the agent says and which tools it calls. The panel
@@ -53,7 +55,7 @@ go build -o orch ./cmd/orch
 ./orch retry 4 / cancel 4          # resume a held task / end a task
 ./orch pause / resume              # stop or restart starting new runs
 ./orch quota                       # each model: ready / cooling / off, runs in 5h, last limit
-./orch use reviewer claude-opus    # pin a role to a model ("auto" unpins)
+./orch use reviewer claude-opus    # choose a role's model ("auto" = fallback order)
 ./orch disable codex-sol           # switch a model off; enable switches it back on
 ./orch version
 ```

@@ -23,7 +23,7 @@ var reviewTmpl = template.Must(template.New("reviewer").Parse(reviewerPrompt))
 // VerdictSchema is the reviewer's structured answer. Every property is
 // required and no others are allowed, as Codex's strict output schemas need.
 const VerdictSchema = `{"type":"object","properties":{` +
-	`"verdict":{"type":"string","enum":["approve","request_changes","escalate"]},` +
+	`"verdict":{"type":"string","enum":["approve","request_changes","escalate","incomplete"]},` +
 	`"escalation":{"type":"string","enum":["none","security_sensitive","requirements_unclear"]},` +
 	`"summary":{"type":"string"},` +
 	`"findings":{"type":"array","items":{"type":"object","properties":{` +
@@ -95,7 +95,9 @@ func (a *Agents) review(ctx context.Context, t store.Task, outboxID int64) (engi
 
 // verdictEvent maps a verdict to the engine. Blocking findings decide over
 // the verdict word: approve with a blocker is a change request, and
-// request_changes with only minor findings is an approval.
+// request_changes with only minor findings is an approval. A review that
+// could not be done, or that requests changes without naming any, holds the
+// task for a human.
 func verdictEvent(v Verdict) (engine.Event, error) {
 	blocking := 0
 	for _, f := range v.Findings {
@@ -110,7 +112,13 @@ func verdictEvent(v Verdict) (engine.Event, error) {
 			r = engine.ReasonSecuritySensitive
 		}
 		return engine.Event{Kind: engine.EvReviewEscalated, Reason: r, Detail: FormatFindings(v)}, nil
+	case "incomplete":
+		return failed(engine.ReasonCLIError, "the reviewer could not complete the review: "+v.Summary), nil
 	case "approve", "request_changes":
+		if v.Verdict == "request_changes" && len(v.Findings) == 0 {
+			// Changes requested but none named: never an approval.
+			return failed(engine.ReasonBadOutput, "the reviewer requested changes but named none: "+v.Summary), nil
+		}
 		if blocking > 0 {
 			return engine.Event{Kind: engine.EvChangesRequested, Detail: FormatFindings(v)}, nil
 		}

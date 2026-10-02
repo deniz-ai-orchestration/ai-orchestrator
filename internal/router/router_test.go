@@ -87,8 +87,13 @@ func TestPinsAndSkips(t *testing.T) {
 	if c, err := Pick(cfg, "developer", Options{Pin: "sonnet", Skip: cooling}); err != nil || c.Name != "haiku" || c.Pinned {
 		t.Fatalf("cooling pin: %+v %v", c, err)
 	}
-	if c, err := Pick(cfg, "reviewer", Options{Pin: "sonnet", Avoid: "sonnet"}); err != nil || c.Name != "gem" {
-		t.Fatalf("a pin never overrides not_same_as: %+v %v", c, err)
+	// not_same_as keeps the pool off the developer's model, but a pin to it
+	// is a deliberate choice and wins.
+	if c, err := Pick(cfg, "reviewer", Options{Pin: "sonnet", Avoid: "sonnet"}); err != nil || c.Name != "sonnet" || !c.Pinned {
+		t.Fatalf("a pin overrides not_same_as: %+v %v", c, err)
+	}
+	if c, err := Pick(cfg, "reviewer", Options{Avoid: "gem"}); err != nil || c.Name == "gem" {
+		t.Fatalf("the pool avoids the developer's model: %+v %v", c, err)
 	}
 	if _, err := Pick(cfg, "developer", Options{Pin: "ghost", Skip: func(string) string { return "x" }}); !strings.Contains(err.Error(), "ghost: not in the config") {
 		t.Fatalf("err %v", err)

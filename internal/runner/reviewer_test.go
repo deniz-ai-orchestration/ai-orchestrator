@@ -61,7 +61,7 @@ func TestReviewApproves(t *testing.T) {
 		t.Fatalf("task %+v (detail %q)", got.Task, e.lastDetail(t))
 	}
 	s := e.agent.specs[0]
-	if s.Argv[0] != "codex" || !strings.Contains(strings.Join(s.Argv, " "), "--sandbox read-only") {
+	if s.Argv[0] != "codex" || !strings.Contains(strings.Join(s.Argv, " "), "--dangerously-bypass-approvals-and-sandbox") {
 		t.Errorf("argv %v", s.Argv)
 	}
 	if s.Secrets["GH_TOKEN"] != "rev-tok" || s.Volumes["orch-codex-home"] != HomeDir+"/.codex" {
@@ -132,6 +132,10 @@ func TestReviewOutcomes(t *testing.T) {
 			engine.NeedsHuman, engine.ReasonRequirementsUnclear},
 		{"request_changes with only nits", codexAnswer(Verdict{Verdict: "request_changes", Escalation: "none", Summary: "nits",
 			Findings: []Finding{{Severity: "nit", Comment: "typo"}}}), engine.ReadyForHuman, ""},
+		{"incomplete", codexAnswer(Verdict{Verdict: "incomplete", Escalation: "none", Summary: "sandbox cannot create a namespace", Findings: []Finding{}}),
+			engine.NeedsHuman, engine.ReasonCLIError},
+		{"request_changes without findings", codexAnswer(Verdict{Verdict: "request_changes", Escalation: "none", Summary: "could not review", Findings: []Finding{}}),
+			engine.NeedsHuman, engine.ReasonBadOutput},
 		{"unknown verdict", codexAnswer(map[string]any{"verdict": "maybe", "summary": "x"}), engine.NeedsHuman, engine.ReasonBadOutput},
 		{"prose", `{"type":"item.completed","item":{"type":"agent_message","text":"LGTM"}}` + "\n" + `{"type":"turn.completed","usage":{}}` + "\n",
 			engine.NeedsHuman, engine.ReasonBadOutput},

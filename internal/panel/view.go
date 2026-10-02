@@ -27,7 +27,10 @@ type View struct {
 	Tasks  []TaskRow
 	Roles  []RoleRow
 	Models []ModelRow
-	Names  []string // every model name, for the pin selector
+	// Providers and Choices fill each role's provider and model selectors:
+	// providers that can run an agent, and their models.
+	Providers []string
+	Choices   []ModelChoice
 }
 
 // Card is one agent run.
@@ -52,10 +55,14 @@ type RoleRow struct {
 	Name    string
 	Enabled bool
 	Pool    []string
-	Pin     string
+	Pin     string // model chosen for the role; "" means auto
+	PinProv string // provider of Pin
 	Next    string // the model the next run would get, or why none can run
 	NextOK  bool
 }
+
+// ModelChoice is one model in a role's model selector.
+type ModelChoice struct{ Name, Provider, ModelID string }
 
 // ModelRow is one model's quota state.
 type ModelRow struct {
@@ -191,10 +198,25 @@ func (s *Server) roles(ctx context.Context, v *View) error {
 		v.Roles = append(v.Roles, row)
 	}
 	sort.Slice(v.Roles, func(i, j int) bool { return roleOrder(v.Roles[i].Name) < roleOrder(v.Roles[j].Name) })
-	for name := range s.Cfg.Models {
-		v.Names = append(v.Names, name)
+	seen := map[string]bool{}
+	for name, m := range s.Cfg.Models {
+		p := s.Cfg.Providers[m.Provider]
+		if m.Disabled || p.Disabled || p.CLI == "" {
+			continue // cannot run an agent
+		}
+		v.Choices = append(v.Choices, ModelChoice{Name: name, Provider: m.Provider, ModelID: m.Model})
+		if !seen[m.Provider] {
+			seen[m.Provider] = true
+			v.Providers = append(v.Providers, m.Provider)
+		}
 	}
-	sort.Strings(v.Names)
+	sort.Strings(v.Providers)
+	sort.Slice(v.Choices, func(i, j int) bool { return v.Choices[i].Name < v.Choices[j].Name })
+	for i := range v.Roles {
+		if m, ok := s.Cfg.Models[v.Roles[i].Pin]; ok {
+			v.Roles[i].PinProv = m.Provider
+		}
+	}
 	return nil
 }
 

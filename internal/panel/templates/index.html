@@ -91,27 +91,31 @@
 <section id="roles" hx-get="/parts/roles" hx-trigger="every 10s, refresh from:body" hx-swap="outerHTML">
   <h2>Roles</h2>
   <div class="table"><table>
-    <thead><tr><th>Role</th><th>Next run uses</th><th>Pool</th><th>Pin</th></tr></thead>
+    <thead><tr><th>Role</th><th>Next run uses</th><th>Provider and model</th><th>Fallback order</th></tr></thead>
     <tbody>
-    {{$names := .Names}}
+    {{$v := .}}
     {{range .Roles}}
       <tr>
         <td>{{human .Name}}</td>
-        <td>{{if not .Enabled}}<span class="muted">role off</span>{{else if .NextOK}}{{.Next}}{{else}}<span class="badge failed" title="{{.Next}}">no model can run</span>{{end}}</td>
-        <td class="muted">{{range $i, $m := .Pool}}{{if $i}}, {{end}}{{$m}}{{end}}</td>
+        <td>{{if not .Enabled}}<span class="muted">role off</span>{{else if .NextOK}}{{.Next}}{{if not .Pin}} <span class="muted">(auto)</span>{{end}}{{else}}<span class="badge failed" title="{{.Next}}">no model can run</span>{{end}}</td>
         <td>
           {{if and .Enabled (ne .Name "helper")}}
-          <form class="inline" hx-post="/act" hx-target="#flash" hx-swap="innerHTML">
+          {{$pin := .Pin}}{{$prov := .PinProv}}
+          <form class="inline model-pick" hx-post="/act" hx-target="#flash" hx-swap="innerHTML">
             <input type="hidden" name="verb" value="use"><input type="hidden" name="a" value="{{.Name}}">
-            {{$pin := .Pin}}
-            <select name="b" aria-label="Pin {{.Name}}">
-              <option value="auto"{{if not $pin}} selected{{end}}>auto</option>
-              {{range $names}}<option value="{{.}}"{{if eq . $pin}} selected{{end}}>{{.}}</option>{{end}}
+            <select class="provider" aria-label="{{human .Name}} provider">
+              <option value=""{{if not $pin}} selected{{end}}>auto</option>
+              {{range $v.Providers}}<option value="{{.}}"{{if eq . $prov}} selected{{end}}>{{.}}</option>{{end}}
             </select>
-            <button>Set</button>
+            <select class="model" name="b" aria-label="{{human .Name}} model">
+              <option value="auto" data-provider=""{{if $pin}} hidden{{else}} selected{{end}}>first available</option>
+              {{range $v.Choices}}<option value="{{.Name}}" data-provider="{{.Provider}}" title="{{.ModelID}}"{{if ne .Provider $prov}} hidden{{end}}{{if eq .Name $pin}} selected{{end}}>{{.Name}}</option>{{end}}
+            </select>
+            <button>Use</button>
           </form>
           {{end}}
         </td>
+        <td class="muted">{{range $i, $m := .Pool}}{{if $i}}, {{end}}{{$m}}{{end}}</td>
       </tr>
     {{end}}
     </tbody>
