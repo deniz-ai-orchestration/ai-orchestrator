@@ -4,6 +4,13 @@
 #
 # CLI versions match the ones the PC2 fixtures were recorded with
 # (testdata/fixtures). Bump them together with new fixtures.
+ARG GO_VERSION=1.23
+
+# The Go toolchain comes from the official image, so reviewers and testers
+# can build and test Go projects. A go.mod that asks for a newer Go makes
+# the go command download that toolchain (GOTOOLCHAIN=auto).
+FROM golang:${GO_VERSION}-bookworm AS go
+
 FROM node:22-bookworm-slim
 
 ARG CLAUDE_VERSION=2.1.287
@@ -20,6 +27,8 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends gh \
  && rm -rf /var/lib/apt/lists/*
 
+COPY --from=go /usr/local/go /usr/local/go
+
 RUN npm install -g \
       @anthropic-ai/claude-code@${CLAUDE_VERSION} \
       @openai/codex@${CODEX_VERSION} \
@@ -34,6 +43,9 @@ RUN mkdir -p /home/agent/.codex /work \
  && chmod 1777 /home/agent /work
 
 ENV HOME=/home/agent \
+    PATH=/usr/local/go/bin:/home/agent/go/bin:$PATH \
+    GOPATH=/home/agent/go \
+    GOFLAGS=-modcacherw \
     DISABLE_AUTOUPDATER=1 \
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 WORKDIR /work
