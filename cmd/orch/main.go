@@ -160,6 +160,13 @@ func serve(ctx context.Context, cfg *config.Config, logOut io.Writer) error {
 		Projects: runner.Projects{Dir: cfg.Projects.Dir},
 		Dir:      filepath.Join(cfg.DataDir, "agents"), RunsDir: agents.RunsDir, User: agents.User,
 		Quota: agents.Quota, Log: log.With("component", "chats"),
+		Publisher: func() (runner.PRClient, string, error) {
+			t, err := readSecret(cfg.SecretsDir, "github_developer_token")
+			if err != nil {
+				return nil, "", err
+			}
+			return github.New(t), t, nil
+		},
 		Pins: func(role string) string {
 			pins, err := st.RolePins(context.Background())
 			if err != nil {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"mime/multipart"
@@ -36,8 +37,9 @@ func (replyContainer) Run(_ context.Context, _ runner.Spec, stdout, _ io.Writer)
 func (replyContainer) RemoveStale(context.Context) error { return nil }
 
 type chatEnv struct {
-	st  *store.Store
-	srv *httptest.Server
+	st    *store.Store
+	srv   *httptest.Server
+	chats *runner.Chats
 }
 
 func newChatEnv(t *testing.T) *chatEnv {
@@ -88,7 +90,7 @@ func newChatEnv(t *testing.T) *chatEnv {
 	for !chats.Running() {
 		time.Sleep(time.Millisecond)
 	}
-	return &chatEnv{st: st, srv: srv}
+	return &chatEnv{st: st, srv: srv, chats: chats}
 }
 
 func (e *chatEnv) postForm(t *testing.T, path string, origin bool, fields map[string]string, files map[string][]byte) (int, http.Header, string) {
@@ -260,5 +262,34 @@ func TestSendToTesters(t *testing.T) {
 	}
 	if _, cards := e.get(t, "/parts/chats"); !strings.Contains(cards, "Testing agent 1") {
 		t.Error("tester card does not name its developer")
+	}
+}
+
+func TestOpenPRForm(t *testing.T) {
+	e := newChatEnv(t)
+	fields := map[string]string{"role": "developer", "model": "claude-sonnet", "project": "shop", "message": "Add a README\n\nShort one."}
+	if code, _, body := e.postForm(t, "/agents", true, fields, nil); code != http.StatusOK {
+		t.Fatalf("summon: %d %s", code, body)
+	}
+	e.waitIdle(t, 1)
+	if _, page := e.get(t, "/agents/1"); strings.Contains(page, "Open PR") {
+		t.Fatal("Open PR offered without a publisher")
+	}
+	e.chats.Publisher = func() (runner.PRClient, string, error) { return nil, "", errors.New("unused") }
+	_, page := e.get(t, "/agents/1")
+	for _, want := range []string{`hx-post="/agents/1/pr"`, `name="title" value="Add a README"`, "&gt; Short one."} {
+		if !strings.Contains(page, want) {
+			t.Errorf("agent page lacks %q", want)
+		}
+	}
+	if _, _, body := e.postForm(t, "/agents/1/pr", true, map[string]string{"title": "T"}, nil); !strings.Contains(body, "No PR: the project has no origin remote") {
+		t.Fatalf("open PR: %s", body)
+	}
+	if err := e.st.SetAgentPR(context.Background(), 1, 7, "https://github.com/o/r/pull/7"); err != nil {
+		t.Fatal(err)
+	}
+	_, page = e.get(t, "/agents/1")
+	if !strings.Contains(page, "Push to PR #7") || !strings.Contains(page, `href="https://github.com/o/r/pull/7"`) {
+		t.Error("agent page does not show its PR")
 	}
 }

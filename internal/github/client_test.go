@@ -225,3 +225,52 @@ func TestPRStateAndChecks(t *testing.T) {
 		t.Fatal("missing job log should fail")
 	}
 }
+
+func TestOpenPRCalls(t *testing.T) {
+	var mu sync.Mutex
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var in map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&in)
+		b, _ := json.Marshal(in)
+		mu.Lock()
+		got = append(got, r.Method+" "+r.URL.Path+" "+string(b))
+		mu.Unlock()
+		switch r.Method + " " + r.URL.Path {
+		case "GET /repos/o/r":
+			_, _ = w.Write([]byte(`{"default_branch":"trunk"}`))
+		case "POST /repos/o/r/pulls":
+			w.WriteHeader(201)
+			_, _ = w.Write([]byte(`{"number":5,"html_url":"https://github.com/o/r/pull/5","head":{"ref":"orch/1-x"}}`))
+		default:
+			w.WriteHeader(201)
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+	c := New("tok")
+	c.BaseURL = srv.URL
+	ctx := context.Background()
+	if b, err := c.DefaultBranch(ctx, "o/r"); err != nil || b != "trunk" {
+		t.Fatalf("default branch %q %v", b, err)
+	}
+	pr, err := c.CreatePR(ctx, "o/r", NewPR{Title: "T", Head: "orch/1-x", Base: "trunk", Body: "B"})
+	if err != nil || pr.Number != 5 || pr.HTMLURL != "https://github.com/o/r/pull/5" {
+		t.Fatalf("pr %+v %v", pr, err)
+	}
+	if err := c.RequestReview(ctx, "o/r", 5, []string{"deniz"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.AddAssignees(ctx, "o/r", 5, []string{"deniz"}); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		`GET /repos/o/r null`,
+		`POST /repos/o/r/pulls {"base":"trunk","body":"B","head":"orch/1-x","title":"T"}`,
+		`POST /repos/o/r/pulls/5/requested_reviewers {"reviewers":["deniz"]}`,
+		`POST /repos/o/r/issues/5/assignees {"assignees":["deniz"]}`,
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("calls:\n%s", strings.Join(got, "\n"))
+	}
+}

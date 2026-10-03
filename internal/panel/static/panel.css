@@ -51,6 +51,12 @@ button.danger { color: var(--bad); }
 .testers { flex-basis: 100%; list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
 .testers .last { color: var(--muted); overflow-wrap: anywhere; }
 .msg.from-brief, .msg.from-testers { border-color: var(--warn); }
+.pr-form { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.pr-form summary { cursor: pointer; font-weight: 600; }
+.pr-form form { display: grid; gap: 8px; margin-top: 8px; width: 100%; }
+.pr-form label { display: grid; gap: 2px; font-size: 12px; color: var(--muted); }
+.pr-form input[name="title"] { width: 100%; }
+a.pr { font-weight: 600; }
 .card.working { border-color: var(--info); }
 .card.needs_you { border-color: var(--warn); }
 .card .last { margin: 6px 0 0; overflow-wrap: anywhere; }

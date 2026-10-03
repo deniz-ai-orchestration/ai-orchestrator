@@ -76,6 +76,22 @@ you. After `limits.review_cycles` rounds the developer waits for you too;
 Send to testers on its page runs one more round, or a first one at any time.
 Stop testers ends a round early with what the testers found.
 
+Open PR on a developer agent's page pushes its branch to the project's
+GitHub origin as deniz-agent (`github_developer_token`) and opens a pull
+request with you (`github.trusted_actor`) as reviewer and assignee. The form
+starts from your task, the agent's last report and the last test round.
+`github.forbidden_paths` and `limits.max_diff_lines` apply; a branch that
+breaks them is not pushed. Once the PR exists, Push to PR pushes new
+commits. orch never force-pushes and never merges.
+
+Agents commit into the project's `.git` folder, so orch treats it as
+writable by them: its config, hooks and `commondir` are mounted read-only
+into containers, orch's own git commands run on the project's `.git` (never
+inside an agent's worktree) with hooks and fsmonitor off, and the push with
+the token goes from a fresh repository orch creates for it. orch creates
+`.git/commondir` (containing `.`) in each project the first time an agent
+runs there.
+
 ## Commands
 
 ```sh

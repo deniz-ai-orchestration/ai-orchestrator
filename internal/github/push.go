@@ -62,6 +62,13 @@ func ValidatePush(issue int, branch string, cmp Comparison, r PushRules) []Viola
 	if m := branchRe.FindStringSubmatch(branch); m == nil || m[1] != strconv.Itoa(issue) {
 		vs = append(vs, Violation{"branch", fmt.Sprintf("%q is not agent/%d-<slug>", branch, issue)})
 	}
+	return append(vs, CheckChanges(cmp, r)...)
+}
+
+// CheckChanges checks a diff against the forbidden paths and the size
+// limit, whatever branch it is on.
+func CheckChanges(cmp Comparison, r PushRules) []Violation {
+	var vs []Violation
 	lines := 0
 	for _, f := range cmp.Files {
 		lines += f.Additions + f.Deletions
