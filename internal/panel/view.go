@@ -31,6 +31,9 @@ type View struct {
 	// providers that can run an agent, and their models.
 	Providers []string
 	Choices   []ModelChoice
+	// Chats are the summoned agents; Summon fills the summon form.
+	Chats  []AgentCard
+	Summon *SummonForm
 }
 
 // Card is one agent run.
@@ -93,6 +96,10 @@ func (s *Server) view(ctx context.Context, parts ...string) (View, error) {
 			err = s.roles(ctx, &v)
 		case "quota":
 			err = s.models(ctx, &v)
+		case "chats":
+			err = s.chatCards(ctx, &v)
+		case "summon":
+			err = s.summonForm(ctx, &v)
 		}
 		if err != nil {
 			return v, fmt.Errorf("%s: %w", p, err)
@@ -210,14 +217,18 @@ func (s *Server) roles(ctx context.Context, v *View) error {
 			v.Providers = append(v.Providers, m.Provider)
 		}
 	}
-	sort.Strings(v.Providers)
-	sort.Slice(v.Choices, func(i, j int) bool { return v.Choices[i].Name < v.Choices[j].Name })
+	sortChoices(v.Providers, v.Choices)
 	for i := range v.Roles {
 		if m, ok := s.Cfg.Models[v.Roles[i].Pin]; ok {
 			v.Roles[i].PinProv = m.Provider
 		}
 	}
 	return nil
+}
+
+func sortChoices(providers []string, choices []ModelChoice) {
+	sort.Strings(providers)
+	sort.Slice(choices, func(i, j int) bool { return choices[i].Name < choices[j].Name })
 }
 
 // roleOrder lists the workflow's roles first, in workflow order, then the

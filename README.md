@@ -41,8 +41,27 @@ each role's provider and model selectors, fallback order and the model its next 
 quota state with a switch. Pause all stops new runs from starting, and Stop
 ends a running agent (the task then waits for Retry). Each run has a live,
 view-only terminal of what the agent says and which tools it calls. The panel
-has no login: keep it on the LAN. Taking control of a terminal, ad-hoc
-sessions and needs-input pings come next (M3b).
+has no login: keep it on the LAN. Taking control of a terminal and
+needs-you pings come later.
+
+### Summoned agents
+
+Set `projects.dir` (for example `~/projects`) to a folder holding one git
+repository per project. The panel's Summon form takes a role, a provider and
+model (preselected from the role's choice), a project folder, a branch
+(empty makes a new `orch/<id>-<task words>` from the project's current commit)
+and the task, with optional text files up to 1 MB each.
+
+Each agent gets its own git worktree of the project in
+`<data_dir>/agents/<id>/work`, so parallel agents never touch each other's
+files or your own checkout. Its page is a chat: every message is one turn,
+run in a throwaway container that resumes the agent's Claude session, so it
+remembers earlier turns. The running turn streams in below the chat, and each
+reply links to its full transcript. A turn ends as done or needs you. Stop
+ends a turn and keeps the session; Close removes the worktree and session,
+and the branch with the agent's commits stays in the project. Agents commit
+but never push, and they get no GitHub token. Only Claude models can chat for
+now; Codex and OpenCode follow.
 
 ## Commands
 

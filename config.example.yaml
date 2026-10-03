@@ -19,6 +19,9 @@ panel:
   enabled: false
   listen: 192.168.1.20:8787            # PC2's LAN address only; no login, open it by IP
 
+projects:
+  dir: ~/projects                      # one git repo per folder; summoned agents get a worktree of one
+
 runner:
   image: orch-agent:latest             # docker build -t orch-agent docker/agent
   cpus: "2"

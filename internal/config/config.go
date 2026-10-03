@@ -27,6 +27,7 @@ type Config struct {
 	GitHub    GitHub              `yaml:"github"`
 	Telegram  Telegram            `yaml:"telegram"`
 	Panel     Panel               `yaml:"panel"`
+	Projects  Projects            `yaml:"projects"`
 	Runner    Runner              `yaml:"runner"`
 	Providers map[string]Provider `yaml:"providers"`
 	Models    map[string]Model    `yaml:"models"`
@@ -58,6 +59,14 @@ type Telegram struct {
 type Panel struct {
 	Enabled bool   `yaml:"enabled"`
 	Listen  string `yaml:"listen"`
+}
+
+// Projects says where the project folders agents work on live.
+type Projects struct {
+	// Dir holds one git repository per project (for example ~/projects).
+	// Each summoned agent gets a git worktree of one of them. Empty means
+	// agents cannot be summoned.
+	Dir string `yaml:"dir"`
 }
 
 // Runner configures the throwaway agent containers.
@@ -155,6 +164,7 @@ func (c *Config) applyDefaults() {
 	}
 	c.DataDir = expandHome(c.DataDir, home)
 	c.SecretsDir = expandHome(c.SecretsDir, home)
+	c.Projects.Dir = expandHome(c.Projects.Dir, home)
 	if c.GitHub.Trigger == "" {
 		c.GitHub.Trigger = "agent:ready"
 	}
@@ -208,6 +218,10 @@ func (c *Config) Validate() error {
 	}
 	if c.Panel.Enabled && c.Panel.Listen == "" {
 		add("panel.listen is required when the panel is enabled")
+	}
+
+	if c.Projects.Dir != "" && !filepath.IsAbs(c.Projects.Dir) {
+		add("projects.dir %q must be an absolute path or start with ~/", c.Projects.Dir)
 	}
 
 	if c.Runner.GitName == "" || c.Runner.GitEmail == "" {

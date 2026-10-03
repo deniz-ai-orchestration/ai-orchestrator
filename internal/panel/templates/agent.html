@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="htmx-config" content='{"allowEval":false,"includeIndicatorStyles":false,"historyEnabled":false}'>
+<title>orch · agent {{.ID}}</title>
+<link rel="stylesheet" href="/static/panel.css">
+<script src="/static/vendor/htmx.min.js"></script>
+<script src="/static/chat.js" defer></script>
+</head>
+<body class="agent-page">
+<header>
+  <h1><a href="/">orch</a> · agent {{.ID}}</h1>
+  {{template "agent-head" .}}
+  <div id="flash" aria-live="polite"></div>
+</header>
+<main class="chat">
+  {{template "messages" .}}
+  <section id="live-wrap">
+    <h2>Live turn</h2>
+    <pre id="live" class="live" aria-live="off"></pre>
+  </section>
+  <form class="send" hx-post="/agents/{{.ID}}/send" hx-encoding="multipart/form-data" hx-target="#flash" hx-swap="innerHTML">
+    <textarea name="message" rows="3" required placeholder="Message the agent"></textarea>
+    <div class="fields">
+      <label>Files <input type="file" name="files" multiple></label>
+      <span class="muted">Text files, up to 1 MB each.</span>
+      <button>Send</button>
+    </div>
+  </form>
+</main>
+</body>
+</html>
+
+{{define "agent-head"}}
+<div id="agent-head" class="agent-head" data-run="{{.RunID}}" hx-get="/agents/{{.ID}}/parts/agent-head" hx-trigger="every 2s, refresh from:body" hx-swap="outerHTML">
+  <span class="badge {{.State}}">{{human .State}}</span>
+  <span class="meta">{{human .Role}} · {{.Model}} · {{.Project}} · {{.Branch}}</span>
+  {{if .Working}}
+  <form hx-post="/agents/{{.ID}}/stop" hx-target="#flash" hx-swap="innerHTML"><button class="danger">Stop</button></form>
+  {{else if ne .State "closed"}}
+  <form hx-post="/agents/{{.ID}}/close" hx-target="#flash" hx-swap="innerHTML" hx-confirm="Close this agent? Its worktree and session are removed; branch {{.Branch}} stays."><button class="danger">Close agent</button></form>
+  {{end}}
+</div>
+{{end}}
+
+{{define "messages"}}
+<section id="messages" class="messages" hx-get="/agents/{{.ID}}/parts/messages" hx-trigger="every 3s, refresh from:body" hx-swap="outerHTML">
+  {{range .Messages}}
+  <article class="msg from-{{.Author}}">
+    <div class="meta">{{if eq .Author "you"}}You{{else if eq .Author "agent"}}Agent{{else}}orch{{end}} · {{.Time}}{{if .RunID}} · <a href="/runs/{{.RunID}}">transcript</a>{{end}}</div>
+    <div class="body">{{.Body}}</div>
+    {{if .Files}}<div class="meta">Files: {{range $i, $f := .Files}}{{if $i}}, {{end}}{{$f}}{{end}}</div>{{end}}
+  </article>
+  {{end}}
+</section>
+{{end}}

@@ -42,6 +42,7 @@ func (claude) Parse(req Request, run RunOutput) Outcome {
 		}
 		return o
 	}
+	o.Session = str(result, "session_id")
 	usage := obj(result, "usage")
 	o.InputTokens, o.OutputTokens = num(usage, "input_tokens"), num(usage, "output_tokens")
 	text := str(result, "result")

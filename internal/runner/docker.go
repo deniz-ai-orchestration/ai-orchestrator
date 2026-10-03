@@ -29,6 +29,7 @@ type Spec struct {
 	Work    string            // host workspace, mounted at WorkDir
 	IO      string            // host run io dir, mounted at IODir
 	Volumes map[string]string // named volume -> path in the container
+	Binds   []string          // more host mounts, "host:container[:ro]"
 	Env     map[string]string // non-secret environment
 	Secrets map[string]string // env var -> value, passed by name only
 	CPUs    string
@@ -63,6 +64,9 @@ func (s Spec) Args() []string {
 	}
 	for _, v := range sortedKeys(s.Volumes) {
 		a = append(a, "-v", v+":"+s.Volumes[v])
+	}
+	for _, b := range s.Binds {
+		a = append(a, "-v", b)
 	}
 	for _, k := range sortedKeys(s.Env) {
 		a = append(a, "-e", k+"="+s.Env[k])

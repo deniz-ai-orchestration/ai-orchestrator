@@ -17,6 +17,7 @@ import (
 
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/config"
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/quota"
+	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/runner"
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/store"
 )
 
@@ -46,7 +47,9 @@ type Server struct {
 	Quota    *quota.Tracker
 	Commands Commander
 	Agents   Stopper
-	Log      *slog.Logger
+	// Chats runs summoned agents; nil hides the summon form.
+	Chats *runner.Chats
+	Log   *slog.Logger
 	// Follow is how often a live run view checks for new output (default
 	// 500ms).
 	Follow time.Duration
@@ -101,6 +104,12 @@ func (s *Server) Handler() (http.Handler, error) {
 	mux.HandleFunc("POST /act", s.act)
 	mux.HandleFunc("GET /runs/{id}", s.runPage)
 	mux.HandleFunc("GET /runs/{id}/stream", s.stream)
+	mux.HandleFunc("POST /agents", s.summon)
+	mux.HandleFunc("GET /agents/{id}", s.agentPage)
+	mux.HandleFunc("GET /agents/{id}/parts/{name}", s.agentPart)
+	mux.HandleFunc("POST /agents/{id}/send", s.send)
+	mux.HandleFunc("POST /agents/{id}/stop", s.stopAgent)
+	mux.HandleFunc("POST /agents/{id}/close", s.closeAgent)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(static)))
 	return guard(mux), nil
 }
@@ -159,7 +168,7 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 }
 
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
-	v, err := s.view(r.Context(), "agents", "tasks", "roles", "quota")
+	v, err := s.view(r.Context(), "summon", "chats", "agents", "tasks", "roles", "quota")
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -170,7 +179,7 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 func (s *Server) part(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	switch name {
-	case "agents", "tasks", "roles", "quota", "pause":
+	case "chats", "agents", "tasks", "roles", "quota", "pause":
 	default:
 		http.NotFound(w, r)
 		return

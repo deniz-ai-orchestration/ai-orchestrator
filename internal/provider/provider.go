@@ -7,6 +7,7 @@ package provider
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"time"
 
 	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/config"
@@ -25,6 +26,9 @@ type Request struct {
 	MaxTurns   int    // 0 = CLI default
 	ReadOnly   bool   // reviewers and testers: no edits to the workspace
 	Agent      string // OpenCode agent name (e.g. "qa"); ignored elsewhere
+	// Session resumes a CLI session from an earlier run (a summoned agent's
+	// next turn). Only adapters that report Resumes accept it.
+	Session string
 }
 
 // Command is a CLI invocation. It never holds secret values: SecretEnv maps
@@ -61,6 +65,7 @@ type Outcome struct {
 	InputTokens  int
 	OutputTokens int
 	Detail       string
+	Session      string // the CLI session id, when the CLI reports one
 }
 
 // Reason maps a failed outcome to the engine's needs_human reason.
@@ -109,7 +114,21 @@ func For(p config.Provider) (Adapter, error) {
 // wantsResult reports whether the run must end in a structured result.
 func (r Request) wantsResult() bool { return r.Schema != "" || r.SchemaPath != "" }
 
-var errNoModel = errors.New("model is required")
+// Resumes reports whether an adapter can continue a CLI session across
+// runs, which a summoned agent's chat needs.
+func Resumes(a Adapter) bool {
+	_, ok := a.(claude)
+	return ok
+}
+
+// sessionID is what a CLI session id looks like (a UUID or similar); it
+// becomes a command-line argument.
+var sessionID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
+
+var (
+	errNoModel  = errors.New("model is required")
+	errNoResume = errors.New("this CLI cannot resume a session yet")
+)
 
 func check(r Request) error {
 	if r.Model == "" {
@@ -117,6 +136,9 @@ func check(r Request) error {
 	}
 	if r.Prompt == "" {
 		return errors.New("prompt is required")
+	}
+	if r.Session != "" && !sessionID.MatchString(r.Session) {
+		return fmt.Errorf("session id %q is not valid", r.Session)
 	}
 	return nil
 }

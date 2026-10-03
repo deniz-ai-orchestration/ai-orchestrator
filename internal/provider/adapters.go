@@ -36,6 +36,9 @@ func (claude) Build(r Request) (Command, error) {
 	if r.MaxTurns > 0 {
 		argv = append(argv, "--max-turns", strconv.Itoa(r.MaxTurns))
 	}
+	if r.Session != "" {
+		argv = append(argv, "--resume", r.Session)
+	}
 	if r.ReadOnly {
 		// Not a sandbox: Bash stays available. The real guard is the
 		// read-only GitHub token and the throwaway container.
@@ -58,6 +61,9 @@ func (codex) CLI() string { return "codex" }
 func (codex) Build(r Request) (Command, error) {
 	if err := check(r); err != nil {
 		return Command{}, err
+	}
+	if r.Session != "" {
+		return Command{}, errNoResume
 	}
 	// Codex's own sandbox needs Linux namespaces, which the agent container
 	// (all capabilities dropped, no-new-privileges) does not allow, so every
@@ -93,6 +99,9 @@ func (agy) Build(r Request) (Command, error) {
 	if err := check(r); err != nil {
 		return Command{}, err
 	}
+	if r.Session != "" {
+		return Command{}, errNoResume
+	}
 	argv := []string{"agy", "-p", r.Prompt, "--model", r.Model, "--output-format", "stream-json"}
 	if r.Schema != "" {
 		argv = append(argv, "--json-schema", r.Schema)
@@ -113,6 +122,9 @@ func (opencode) CLI() string { return "opencode" }
 func (opencode) Build(r Request) (Command, error) {
 	if err := check(r); err != nil {
 		return Command{}, err
+	}
+	if r.Session != "" {
+		return Command{}, errNoResume
 	}
 	model := r.Model
 	if !strings.HasPrefix(model, "opencode-go/") {
