@@ -21,6 +21,18 @@ func TestVersion(t *testing.T) {
 	}
 }
 
+func TestHelp(t *testing.T) {
+	for _, arg := range []string{"help", "--help", "-h"} {
+		var out, errOut bytes.Buffer
+		if err := run(context.Background(), []string{arg}, &out, &errOut); err != nil {
+			t.Fatalf("%s: %v", arg, err)
+		}
+		if out.String() != usage || errOut.Len() != 0 {
+			t.Errorf("%s: stdout %q, stderr %q", arg, out.String(), errOut.String())
+		}
+	}
+}
+
 func TestCheckConfig(t *testing.T) {
 	var out bytes.Buffer
 	err := run(context.Background(), []string{"-config", "../../config.example.yaml", "check-config"}, &out, &bytes.Buffer{})

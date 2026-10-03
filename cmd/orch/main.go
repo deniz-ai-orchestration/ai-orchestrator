@@ -48,6 +48,7 @@ commands:
   enable <model>         switch a model back on and clear its cooldown
   disable <model>        switch a model off
   version                print the version (also --version, -v)
+  help                   print this usage (also --help, -h)
 `
 
 func main() {
@@ -60,6 +61,10 @@ func main() {
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "-v") {
 		args = []string{"version"}
+	}
+	if len(args) == 1 && (args[0] == "help" || args[0] == "--help" || args[0] == "-h") {
+		fmt.Fprint(stdout, usage)
+		return nil
 	}
 	fs := flag.NewFlagSet("orch", flag.ContinueOnError)
 	fs.SetOutput(stderr)
