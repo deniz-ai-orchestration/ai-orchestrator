@@ -48,7 +48,7 @@ models:                                # ids verified on PC2 2026-10-02 (testdat
 roles:
   developer:          { pool: [claude-sonnet, claude-opus, codex-sol], timeout: 45m }
   reviewer:           { pool: [codex-sol, claude-sonnet, gemini-pro], not_same_as: developer, timeout: 20m }
-  functional_tester:  { pool: [kimi, gemini-pro], enabled: false }   # Phase 2
+  functional_tester:  { pool: [kimi, gemini-pro] }   # tests a developer agent's work; until these can chat it uses the developer's model
   adversarial_tester: { pool: [gemini-pro, kimi], enabled: false }   # Phase 3
   helper:             { pool: [ollama-local] }
 

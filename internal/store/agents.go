@@ -13,6 +13,8 @@ const (
 	AgentNeedsYou = "needs_you" // the last turn asked you something
 	AgentDone     = "done"      // the last turn finished the task
 	AgentStopped  = "stopped"   // you stopped the turn, or orch restarted during it
+	AgentTesting  = "testing"   // a developer whose testers are running
+	AgentReady    = "ready"     // a developer whose testers approved: ready for a PR
 	AgentFailed   = "failed"    // the last turn failed
 	AgentClosed   = "closed"    // container and worktree removed
 )
@@ -22,6 +24,10 @@ const (
 	FromYou   = "you"
 	FromAgent = "agent"
 	FromOrch  = "orch"
+	// FromBrief is orch's task for a tester; FromTesters carries the
+	// testers' findings to their developer. Both are sent to the agent.
+	FromBrief   = "brief"
+	FromTesters = "testers"
 )
 
 // Agent is one summoned agent.
@@ -36,6 +42,8 @@ type Agent struct {
 	Workspace string
 	Session   string
 	State     string
+	ParentID  int64 // the developer a tester tests; 0 for others
+	Round     int   // a developer's test rounds; a tester's round
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -48,6 +56,7 @@ type Message struct {
 	Body      string
 	Files     []string
 	RunID     int64
+	Data      string // a tester's verdict JSON
 	CreatedAt time.Time
 }
 
@@ -56,9 +65,10 @@ func (s *Store) CreateAgent(ctx context.Context, a Agent) (Agent, error) {
 	now := s.now()
 	a.State, a.CreatedAt, a.UpdatedAt = AgentWorking, now, now
 	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO agents (role, provider, model, project, branch, base, workspace, session, state, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		a.Role, a.Provider, a.Model, a.Project, a.Branch, a.Base, a.Workspace, a.Session, a.State, fmtTime(now), fmtTime(now))
+		INSERT INTO agents (role, provider, model, project, branch, base, workspace, session, state, parent_id, round, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		a.Role, a.Provider, a.Model, a.Project, a.Branch, a.Base, a.Workspace, a.Session, a.State, nullID(a.ParentID), a.Round,
+		fmtTime(now), fmtTime(now))
 	if err != nil {
 		return a, err
 	}
@@ -81,6 +91,23 @@ func (s *Store) SetAgentSession(ctx context.Context, id int64, session string) e
 // SetAgentState moves an agent to state.
 func (s *Store) SetAgentState(ctx context.Context, id int64, state string) error {
 	return s.exec1(ctx, `UPDATE agents SET state = ?, updated_at = ? WHERE id = ?`, state, fmtTime(s.now()), id)
+}
+
+// SetAgentStateIf moves an agent from one state to another and reports
+// whether it was in the first.
+func (s *Store) SetAgentStateIf(ctx context.Context, id int64, from, to string) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE agents SET state = ?, updated_at = ? WHERE id = ? AND state = ?`,
+		to, fmtTime(s.now()), id, from)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
+// SetAgentRound records a developer's test round.
+func (s *Store) SetAgentRound(ctx context.Context, id int64, round int) error {
+	return s.exec1(ctx, `UPDATE agents SET round = ?, updated_at = ? WHERE id = ?`, round, fmtTime(s.now()), id)
 }
 
 // StartTurn moves an idle agent to working. It reports false when the agent
@@ -115,7 +142,7 @@ func (s *Store) InterruptAgents(ctx context.Context) ([]int64, error) {
 	return ids, rows.Err()
 }
 
-const agentCols = `id, role, provider, model, project, branch, base, workspace, session, state, created_at, updated_at`
+const agentCols = `id, role, provider, model, project, branch, base, workspace, session, state, parent_id, round, created_at, updated_at`
 
 // GetAgent returns one agent, or ErrNotFound.
 func (s *Store) GetAgent(ctx context.Context, id int64) (Agent, error) {
@@ -127,6 +154,16 @@ func (s *Store) GetAgent(ctx context.Context, id int64) (Agent, error) {
 		return Agent{}, ErrNotFound
 	}
 	return as[0], nil
+}
+
+// Testers returns a developer's testers, oldest first.
+func (s *Store) Testers(ctx context.Context, parentID int64) ([]Agent, error) {
+	return s.queryAgents(ctx, `SELECT `+agentCols+` FROM agents WHERE parent_id = ? ORDER BY id`, parentID)
+}
+
+// AgentsIn returns the agents in a state.
+func (s *Store) AgentsIn(ctx context.Context, state string) ([]Agent, error) {
+	return s.queryAgents(ctx, `SELECT `+agentCols+` FROM agents WHERE state = ? ORDER BY id`, state)
 }
 
 // OpenAgents returns every agent that is not closed, newest first.
@@ -144,10 +181,12 @@ func (s *Store) queryAgents(ctx context.Context, q string, args ...any) ([]Agent
 	for rows.Next() {
 		var a Agent
 		var created, updated string
+		var parent sql.NullInt64
 		if err := rows.Scan(&a.ID, &a.Role, &a.Provider, &a.Model, &a.Project, &a.Branch, &a.Base, &a.Workspace,
-			&a.Session, &a.State, &created, &updated); err != nil {
+			&a.Session, &a.State, &parent, &a.Round, &created, &updated); err != nil {
 			return nil, err
 		}
+		a.ParentID = parent.Int64
 		a.CreatedAt, _ = parseTime(created)
 		a.UpdatedAt, _ = parseTime(updated)
 		out = append(out, a)
@@ -158,8 +197,8 @@ func (s *Store) queryAgents(ctx context.Context, q string, args ...any) ([]Agent
 // AddMessage appends a message to an agent's conversation and returns its id.
 func (s *Store) AddMessage(ctx context.Context, m Message) (int64, error) {
 	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO messages (agent_id, author, body, files, run_id, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		m.AgentID, m.Author, m.Body, strings.Join(m.Files, "\n"), nullID(m.RunID), fmtTime(s.now()))
+		INSERT INTO messages (agent_id, author, body, files, run_id, data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		m.AgentID, m.Author, m.Body, strings.Join(m.Files, "\n"), nullID(m.RunID), m.Data, fmtTime(s.now()))
 	if err != nil {
 		return 0, err
 	}
@@ -169,7 +208,7 @@ func (s *Store) AddMessage(ctx context.Context, m Message) (int64, error) {
 // Messages returns an agent's conversation, oldest first.
 func (s *Store) Messages(ctx context.Context, agentID int64) ([]Message, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, agent_id, author, body, files, run_id, created_at FROM messages WHERE agent_id = ? ORDER BY id`, agentID)
+		SELECT id, agent_id, author, body, files, run_id, data, created_at FROM messages WHERE agent_id = ? ORDER BY id`, agentID)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +218,7 @@ func (s *Store) Messages(ctx context.Context, agentID int64) ([]Message, error) 
 		var m Message
 		var files, created string
 		var run sql.NullInt64
-		if err := rows.Scan(&m.ID, &m.AgentID, &m.Author, &m.Body, &files, &run, &created); err != nil {
+		if err := rows.Scan(&m.ID, &m.AgentID, &m.Author, &m.Body, &files, &run, &m.Data, &created); err != nil {
 			return nil, err
 		}
 		if files != "" {

@@ -63,6 +63,19 @@ and the branch with the agent's commits stays in the project. Agents commit
 but never push, and they get no GitHub token. Only Claude models can chat for
 now; Codex and OpenCode follow.
 
+When a developer agent ends a turn as done with new commits, orch summons
+its testers: a functional tester and a reviewer (each if its role is
+enabled), on the role's chosen model or the first in its fallback order that
+can chat, else the developer's model. Each gets a read-only checkout of the
+developer's latest commit, a brief with the task and the developer's report,
+and one turn that ends in a verdict. Blocking findings (blocker or major) go
+back into the developer's chat as a new turn, and the next done starts the
+next round; a clean round marks the developer ready for a PR. A tester that
+cannot finish or asks for a human decision leaves the developer waiting for
+you. After `limits.review_cycles` rounds the developer waits for you too;
+Send to testers on its page runs one more round, or a first one at any time.
+Stop testers ends a round early with what the testers found.
+
 ## Commands
 
 ```sh

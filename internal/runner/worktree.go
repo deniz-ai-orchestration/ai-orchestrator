@@ -105,6 +105,26 @@ func (p Projects) AddWorktree(ctx context.Context, project, dir, branch string, 
 	return w, nil
 }
 
+// AddDetached checks out one commit of a project into dir without a
+// branch: a tester's view of exactly what the developer committed.
+func (p Projects) AddDetached(ctx context.Context, project, dir, sha string) (Worktree, error) {
+	repo, err := p.Path(project)
+	if err != nil {
+		return Worktree{}, err
+	}
+	if err := os.MkdirAll(filepath.Dir(dir), 0o700); err != nil {
+		return Worktree{}, err
+	}
+	if _, err := gitIn(ctx, repo, "worktree", "add", "--quiet", "--detach", dir, sha); err != nil {
+		return Worktree{}, err
+	}
+	w := Worktree{Dir: dir, Base: sha}
+	if w.GitDir, err = gitIn(ctx, repo, "rev-parse", "--path-format=absolute", "--git-common-dir"); err != nil {
+		return w, err
+	}
+	return w, nil
+}
+
 // RemoveWorktree deletes an agent's worktree. Its branch and commits stay in
 // the project.
 func (p Projects) RemoveWorktree(ctx context.Context, project, dir string) error {

@@ -27,6 +27,10 @@ type AgentCard struct {
 type AgentPage struct {
 	AgentCard
 	Messages []MessageView
+	Testers  []AgentCard // a developer's testers, newest first
+	// CanTest shows Send to testers: a developer that is not working or
+	// being tested.
+	CanTest bool
 }
 
 // MessageView is one chat message.
@@ -248,6 +252,24 @@ func (s *Server) page(ctx context.Context, a store.Agent) (AgentPage, error) {
 		return AgentPage{}, err
 	}
 	p := AgentPage{AgentCard: card}
+	if a.Role == "developer" && a.ParentID == 0 {
+		switch a.State {
+		case store.AgentWorking, store.AgentTesting, store.AgentClosed:
+		default:
+			p.CanTest = true
+		}
+		ts, err := s.Store.Testers(ctx, a.ID)
+		if err != nil {
+			return p, err
+		}
+		for i := len(ts) - 1; i >= 0; i-- {
+			tc, err := s.agentCard(ctx, ts[i])
+			if err != nil {
+				return p, err
+			}
+			p.Testers = append(p.Testers, tc)
+		}
+	}
 	ms, err := s.Store.Messages(ctx, a.ID)
 	if err != nil {
 		return p, err
@@ -287,7 +309,33 @@ func (s *Server) stopAgent(w http.ResponseWriter, r *http.Request) {
 		s.flash(w, "Stopping the agent. Its session stays; send a message to continue.")
 		return
 	}
+	if a.State == store.AgentTesting {
+		n, err := s.Chats.StopTesters(r.Context(), a.ID)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		if n > 0 {
+			s.flash(w, "Stopping the testers. The round ends with what they found.")
+			return
+		}
+	}
 	s.flash(w, "The agent is not working.")
+}
+
+// testAgent sends a developer's committed work to the testers.
+func (s *Server) testAgent(w http.ResponseWriter, r *http.Request) {
+	a, ok := s.agentFromPath(w, r)
+	if !ok {
+		return
+	}
+	if err := s.Chats.Test(r.Context(), a.ID); err != nil {
+		s.flash(w, "Not sent to testers: "+err.Error())
+		return
+	}
+	s.Log.Info("panel action", "command", "test", "agent", a.ID)
+	w.Header().Set("HX-Trigger", "refresh")
+	s.flash(w, "Sent to testers.")
 }
 
 func (s *Server) closeAgent(w http.ResponseWriter, r *http.Request) {
