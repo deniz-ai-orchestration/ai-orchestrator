@@ -31,6 +31,10 @@ type AgentPage struct {
 	// CanTest shows Send to testers: a developer that is not working or
 	// being tested.
 	CanTest bool
+	// CanPR shows Open PR (or Push to PR) for a developer agent; Draft
+	// fills its form.
+	CanPR bool
+	Draft runner.PRDraft
 }
 
 // MessageView is one chat message.
@@ -224,6 +228,12 @@ func (s *Server) agentPage(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	if p.CanPR && a.PRNumber == 0 {
+		if p.Draft, err = s.Chats.Draft(r.Context(), a.ID); err != nil {
+			s.fail(w, err)
+			return
+		}
+	}
 	s.render(w, "agent.html", p)
 }
 
@@ -258,6 +268,7 @@ func (s *Server) page(ctx context.Context, a store.Agent) (AgentPage, error) {
 		default:
 			p.CanTest = true
 		}
+		p.CanPR = a.State != store.AgentClosed && s.Chats.Publisher != nil
 		ts, err := s.Store.Testers(ctx, a.ID)
 		if err != nil {
 			return p, err
@@ -321,6 +332,27 @@ func (s *Server) stopAgent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.flash(w, "The agent is not working.")
+}
+
+// openPR pushes a developer's branch and opens its pull request, or pushes
+// to the one it has.
+func (s *Server) openPR(w http.ResponseWriter, r *http.Request) {
+	a, ok := s.agentFromPath(w, r)
+	if !ok {
+		return
+	}
+	n, url, created, err := s.Chats.OpenPR(r.Context(), a.ID, runner.PRDraft{
+		Title: r.PostFormValue("title"), Body: r.PostFormValue("body")})
+	if err != nil {
+		s.flash(w, "No PR: "+err.Error())
+		return
+	}
+	s.Log.Info("panel action", "command", "open_pr", "agent", a.ID, "pr", n, "created", created)
+	if created {
+		s.flash(w, fmt.Sprintf("Opened PR #%d: %s", n, url))
+		return
+	}
+	s.flash(w, fmt.Sprintf("Pushed to PR #%d: %s", n, url))
 }
 
 // testAgent sends a developer's committed work to the testers.

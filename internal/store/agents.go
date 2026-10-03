@@ -44,6 +44,8 @@ type Agent struct {
 	State     string
 	ParentID  int64 // the developer a tester tests; 0 for others
 	Round     int   // a developer's test rounds; a tester's round
+	PRNumber  int   // the pull request orch opened for the branch
+	PRURL     string
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -105,6 +107,11 @@ func (s *Store) SetAgentStateIf(ctx context.Context, id int64, from, to string) 
 	return n == 1, err
 }
 
+// SetAgentPR records the pull request opened for an agent's branch.
+func (s *Store) SetAgentPR(ctx context.Context, id int64, number int, url string) error {
+	return s.exec1(ctx, `UPDATE agents SET pr_number = ?, pr_url = ?, updated_at = ? WHERE id = ?`, number, url, fmtTime(s.now()), id)
+}
+
 // SetAgentRound records a developer's test round.
 func (s *Store) SetAgentRound(ctx context.Context, id int64, round int) error {
 	return s.exec1(ctx, `UPDATE agents SET round = ?, updated_at = ? WHERE id = ?`, round, fmtTime(s.now()), id)
@@ -142,7 +149,7 @@ func (s *Store) InterruptAgents(ctx context.Context) ([]int64, error) {
 	return ids, rows.Err()
 }
 
-const agentCols = `id, role, provider, model, project, branch, base, workspace, session, state, parent_id, round, created_at, updated_at`
+const agentCols = `id, role, provider, model, project, branch, base, workspace, session, state, parent_id, round, pr_number, pr_url, created_at, updated_at`
 
 // GetAgent returns one agent, or ErrNotFound.
 func (s *Store) GetAgent(ctx context.Context, id int64) (Agent, error) {
@@ -183,7 +190,7 @@ func (s *Store) queryAgents(ctx context.Context, q string, args ...any) ([]Agent
 		var created, updated string
 		var parent sql.NullInt64
 		if err := rows.Scan(&a.ID, &a.Role, &a.Provider, &a.Model, &a.Project, &a.Branch, &a.Base, &a.Workspace,
-			&a.Session, &a.State, &parent, &a.Round, &created, &updated); err != nil {
+			&a.Session, &a.State, &parent, &a.Round, &a.PRNumber, &a.PRURL, &created, &updated); err != nil {
 			return nil, err
 		}
 		a.ParentID = parent.Int64

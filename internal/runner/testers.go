@@ -36,7 +36,7 @@ func (c *Chats) Test(ctx context.Context, id int64) error {
 	if !c.Running() {
 		return errors.New("orch is not running agents")
 	}
-	if head, err := gitIn(ctx, a.Workspace, "rev-parse", "HEAD"); err != nil {
+	if head, err := c.Projects.BranchHead(ctx, a.Project, a.Branch); err != nil {
 		return err
 	} else if head == a.Base {
 		return errors.New("no commits on the branch yet; testers only see commits")
@@ -67,17 +67,17 @@ func (c *Chats) startTests(ctx context.Context, id int64, manual bool) error {
 	if !manual && dev.Round >= c.Cfg.Limits.ReviewCycles {
 		return c.devNote(ctx, id, fmt.Sprintf("The testers have checked this agent %d times, the review-cycle limit. Look at the last findings, then use Send to testers to run them again.", dev.Round), store.AgentNeedsYou)
 	}
-	head, err := gitIn(ctx, dev.Workspace, "rev-parse", "HEAD")
+	head, err := c.Projects.BranchHead(ctx, dev.Project, dev.Branch)
 	if err != nil {
 		return err
 	}
-	dirty, err := gitIn(ctx, dev.Workspace, "status", "--porcelain")
+	dirty, err := c.Projects.Dirty(ctx, dev.Project, dev.Workspace, dev.Branch)
 	if err != nil {
 		return err
 	}
 	if head == dev.Base {
 		note := "No commits on the branch yet, so there is nothing for the testers to check."
-		if dirty != "" {
+		if dirty {
 			note += " The worktree has uncommitted changes: testers only see commits."
 		}
 		return c.devNote(ctx, id, note, "")
@@ -109,7 +109,7 @@ func (c *Chats) startTests(ctx context.Context, id int64, manual bool) error {
 		}
 		if err == nil {
 			_, err = c.Store.AddMessage(ctx, store.Message{AgentID: t.ID, Author: store.FromBrief,
-				Body: testerBrief(role, dev, msgs, head, dirty != "")})
+				Body: testerBrief(role, dev, msgs, head, dirty)})
 		}
 		if err != nil {
 			c.fail(ctx, t.ID, "Could not prepare the tester: "+err.Error())
@@ -119,7 +119,7 @@ func (c *Chats) startTests(ctx context.Context, id int64, manual bool) error {
 		started = append(started, t.ID)
 	}
 	note := fmt.Sprintf("Round %d: testing commit %s with %s.", round, short(head), strings.Join(summoned, " and "))
-	if dirty != "" {
+	if dirty {
 		note += " The worktree also has uncommitted changes, which the testers do not see."
 	}
 	if _, err := c.Store.AddMessage(ctx, store.Message{AgentID: id, Author: store.FromOrch, Body: note}); err != nil {
