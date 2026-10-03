@@ -223,3 +223,42 @@ func TestNoChats(t *testing.T) {
 		t.Error("summon form should explain why it is off")
 	}
 }
+
+func TestSendToTesters(t *testing.T) {
+	e := newChatEnv(t)
+	ctx := context.Background()
+	fields := map[string]string{"role": "developer", "model": "claude-sonnet", "project": "shop", "message": "Add a README"}
+	if code, _, body := e.postForm(t, "/agents", true, fields, nil); code != http.StatusOK {
+		t.Fatalf("summon: %d %s", code, body)
+	}
+	e.waitIdle(t, 1)
+	if _, head := e.get(t, "/agents/1/parts/agent-head"); !strings.Contains(head, `hx-post="/agents/1/test"`) {
+		t.Fatalf("no Send to testers button:\n%s", head)
+	}
+	if _, _, body := e.postForm(t, "/agents/1/test", true, nil, nil); !strings.Contains(body, "no commits") {
+		t.Fatalf("send to testers with no commits: %s", body)
+	}
+
+	if err := e.st.SetAgentState(ctx, 1, store.AgentTesting); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.st.CreateAgent(ctx, store.Agent{Role: "reviewer", Provider: "claude", Model: "claude-opus", Project: "shop",
+		Branch: "b", ParentID: 1, Round: 1}); err != nil {
+		t.Fatal(err)
+	}
+	_, head := e.get(t, "/agents/1/parts/agent-head")
+	for _, want := range []string{`href="/agents/2"`, "round 1", "Stop testers"} {
+		if !strings.Contains(head, want) {
+			t.Errorf("developer head lacks %q:\n%s", want, head)
+		}
+	}
+	if strings.Contains(head, `/agents/1/test"`) {
+		t.Error("Send to testers offered while testing")
+	}
+	if _, page := e.get(t, "/agents/2"); !strings.Contains(page, `testing <a href="/agents/1">agent 1</a>`) {
+		t.Error("tester page does not link its developer")
+	}
+	if _, cards := e.get(t, "/parts/chats"); !strings.Contains(cards, "Testing agent 1") {
+		t.Error("tester card does not name its developer")
+	}
+}

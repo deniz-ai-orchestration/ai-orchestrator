@@ -36,11 +36,21 @@
 {{define "agent-head"}}
 <div id="agent-head" class="agent-head" data-run="{{.RunID}}" hx-get="/agents/{{.ID}}/parts/agent-head" hx-trigger="every 2s, refresh from:body" hx-swap="outerHTML">
   <span class="badge {{.State}}">{{human .State}}</span>
-  <span class="meta">{{human .Role}} · {{.Model}} · {{.Project}} · {{.Branch}}</span>
-  {{if .Working}}
-  <form hx-post="/agents/{{.ID}}/stop" hx-target="#flash" hx-swap="innerHTML"><button class="danger">Stop</button></form>
+  <span class="meta">{{human .Role}} · {{.Model}} · {{.Project}} · {{.Branch}}{{if .ParentID}} · round {{.Round}}, testing <a href="/agents/{{.ParentID}}">agent {{.ParentID}}</a>{{end}}</span>
+  {{if .CanTest}}
+  <form hx-post="/agents/{{.ID}}/test" hx-target="#flash" hx-swap="innerHTML"><button>Send to testers</button></form>
+  {{end}}
+  {{if or .Working (eq .State "testing")}}
+  <form hx-post="/agents/{{.ID}}/stop" hx-target="#flash" hx-swap="innerHTML"><button class="danger">{{if .Working}}Stop{{else}}Stop testers{{end}}</button></form>
   {{else if ne .State "closed"}}
   <form hx-post="/agents/{{.ID}}/close" hx-target="#flash" hx-swap="innerHTML" hx-confirm="Close this agent? Its worktree and session are removed; branch {{.Branch}} stays."><button class="danger">Close agent</button></form>
+  {{end}}
+  {{if .Testers}}
+  <ul class="testers">
+    {{range .Testers}}
+    <li><a href="/agents/{{.ID}}">Agent {{.ID}} · {{human .Role}}</a> <span class="badge {{.State}}">{{human .State}}</span> <span class="meta">round {{.Round}} · {{.Model}}</span>{{if .Last}} <span class="last">{{.Last}}</span>{{end}}</li>
+    {{end}}
+  </ul>
   {{end}}
 </div>
 {{end}}
@@ -49,7 +59,7 @@
 <section id="messages" class="messages" hx-get="/agents/{{.ID}}/parts/messages" hx-trigger="every 3s, refresh from:body" hx-swap="outerHTML">
   {{range .Messages}}
   <article class="msg from-{{.Author}}">
-    <div class="meta">{{if eq .Author "you"}}You{{else if eq .Author "agent"}}Agent{{else}}orch{{end}} · {{.Time}}{{if .RunID}} · <a href="/runs/{{.RunID}}">transcript</a>{{end}}</div>
+    <div class="meta">{{if eq .Author "you"}}You{{else if eq .Author "agent"}}Agent{{else if eq .Author "brief"}}orch's brief{{else if eq .Author "testers"}}Testers' findings{{else}}orch{{end}} · {{.Time}}{{if .RunID}} · <a href="/runs/{{.RunID}}">transcript</a>{{end}}</div>
     <div class="body">{{.Body}}</div>
     {{if .Files}}<div class="meta">Files: {{range $i, $f := .Files}}{{if $i}}, {{end}}{{$f}}{{end}}</div>{{end}}
   </article>

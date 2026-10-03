@@ -19,8 +19,8 @@ func TestLoadExample(t *testing.T) {
 	if got := c.Roles["developer"].Timeout; got != 45*time.Minute {
 		t.Errorf("developer.timeout = %s, want 45m", got)
 	}
-	if c.Roles["functional_tester"].IsEnabled() {
-		t.Error("functional_tester should be disabled")
+	if c.Roles["adversarial_tester"].IsEnabled() {
+		t.Error("adversarial_tester should be disabled")
 	}
 	if !c.Roles["developer"].IsEnabled() {
 		t.Error("developer should default to enabled")

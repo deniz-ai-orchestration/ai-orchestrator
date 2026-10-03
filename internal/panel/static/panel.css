@@ -44,6 +44,13 @@ button.danger { color: var(--bad); }
 .badge.working { color: var(--info); }
 .badge.done { color: var(--ok); }
 .badge.needs_you, .badge.stopped { color: var(--warn); }
+.badge.testing { color: var(--info); }
+.badge.ready { color: var(--ok); }
+.card.testing { border-color: var(--info); }
+.card.ready { border-color: var(--ok); }
+.testers { flex-basis: 100%; list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+.testers .last { color: var(--muted); overflow-wrap: anywhere; }
+.msg.from-brief, .msg.from-testers { border-color: var(--warn); }
 .card.working { border-color: var(--info); }
 .card.needs_you { border-color: var(--warn); }
 .card .last { margin: 6px 0 0; overflow-wrap: anywhere; }

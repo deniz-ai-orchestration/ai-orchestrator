@@ -159,7 +159,14 @@ func serve(ctx context.Context, cfg *config.Config, logOut io.Writer) error {
 	chats := &runner.Chats{Store: st, Cfg: cfg, Containers: runner.Docker{},
 		Projects: runner.Projects{Dir: cfg.Projects.Dir},
 		Dir:      filepath.Join(cfg.DataDir, "agents"), RunsDir: agents.RunsDir, User: agents.User,
-		Quota: agents.Quota, Log: log.With("component", "chats")}
+		Quota: agents.Quota, Log: log.With("component", "chats"),
+		Pins: func(role string) string {
+			pins, err := st.RolePins(context.Background())
+			if err != nil {
+				log.Error("read role pins", "err", err)
+			}
+			return pins[role]
+		}}
 	if err := agents.Recover(context.WithoutCancel(ctx)); err != nil {
 		log.Error("runner recovery failed; is Docker running?", "err", err)
 	}

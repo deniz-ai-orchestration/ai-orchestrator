@@ -27,6 +27,8 @@ type chatFake struct {
 	outputs []string
 	// block makes the next turn wait for its context, like a long turn.
 	block chan struct{}
+	// respond, when set, answers a turn instead of outputs.
+	respond func(Spec) string
 }
 
 func (f *chatFake) Run(ctx context.Context, s Spec, stdout, _ io.Writer) (Result, error) {
@@ -38,7 +40,11 @@ func (f *chatFake) Run(ctx context.Context, s Spec, stdout, _ io.Writer) (Result
 	}
 	block := f.block
 	f.block = nil
+	respond := f.respond
 	f.mu.Unlock()
+	if respond != nil {
+		out = respond(s)
+	}
 	if block != nil {
 		close(block)
 		<-ctx.Done()
@@ -117,6 +123,7 @@ models:
 roles:
   developer: { pool: [sonnet] }
   reviewer:  { pool: [sonnet, sol] }
+  functional_tester: { pool: [sol] }
   helper:    { pool: [sonnet] }
 `, filepath.Join(dir, "data"), secrets, projects)))
 	if err != nil {
@@ -209,6 +216,9 @@ func TestSummonAndTwoTurns(t *testing.T) {
 			t.Errorf("bind %q missing from %v", want, s.Binds)
 		}
 	}
+	if s.Env["CLAUDE_CONFIG_DIR"] != HomeDir+"/.claude" {
+		t.Errorf("CLAUDE_CONFIG_DIR = %q", s.Env["CLAUDE_CONFIG_DIR"])
+	}
 	if _, ok := s.Secrets["GH_TOKEN"]; ok {
 		t.Error("a chat agent got a GitHub token")
 	}
@@ -242,7 +252,8 @@ func TestSummonAndTwoTurns(t *testing.T) {
 	for _, m := range ms {
 		got = append(got, m.Author+": "+m.Body)
 	}
-	want := []string{"you: Add a /health endpoint", "agent: Which port should it use?", "you: Use 8080.", "agent: Added /health on 8080 and a test."}
+	want := []string{"you: Add a /health endpoint", "agent: Which port should it use?", "you: Use 8080.", "agent: Added /health on 8080 and a test.",
+		"orch: No commits on the branch yet, so there is nothing for the testers to check."}
 	if !slices.Equal(got, want) {
 		t.Fatalf("conversation %q", got)
 	}
