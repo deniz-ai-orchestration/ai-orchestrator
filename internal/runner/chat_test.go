@@ -209,6 +209,9 @@ func TestSummonAndTwoTurns(t *testing.T) {
 			t.Errorf("bind %q missing from %v", want, s.Binds)
 		}
 	}
+	if s.Env["CLAUDE_CONFIG_DIR"] != HomeDir+"/.claude" {
+		t.Errorf("CLAUDE_CONFIG_DIR = %q", s.Env["CLAUDE_CONFIG_DIR"])
+	}
 	if _, ok := s.Secrets["GH_TOKEN"]; ok {
 		t.Error("a chat agent got a GitHub token")
 	}

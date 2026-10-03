@@ -401,6 +401,10 @@ func (c *Chats) turn(ctx context.Context, id int64) error {
 		return c.endRun(ctx, runID, err)
 	}
 	spec.Binds = []string{home + ":" + HomeDir + "/.claude", inbox + ":" + InboxDir + ":ro", gitDir + ":" + gitDir}
+	// Keep all of Claude's state, .claude.json included, in the saved
+	// folder; by default that file sits in HOME and is lost with the
+	// container.
+	spec.Env["CLAUDE_CONFIG_DIR"] = HomeDir + "/.claude"
 	if err := c.Store.SetRunContainer(ctx, runID, spec.Name); err != nil {
 		return c.endRun(ctx, runID, err)
 	}
