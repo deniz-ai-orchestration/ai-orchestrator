@@ -21,6 +21,26 @@
     <h2>Live turn</h2>
     <pre id="live" class="live" aria-live="off"></pre>
   </section>
+  {{if .CanPR}}
+  {{if .PRNumber}}
+  <form class="pr-form" hx-post="/agents/{{.ID}}/pr" hx-target="#flash" hx-swap="innerHTML">
+    <button>Push to PR #{{.PRNumber}}</button>
+    <span class="muted">Pushes the branch's new commits as deniz-agent. Never force-pushes.</span>
+  </form>
+  {{else}}
+  <details class="pr-form">
+    <summary>Open PR</summary>
+    <form hx-post="/agents/{{.ID}}/pr" hx-target="#flash" hx-swap="innerHTML">
+      <label>Title <input name="title" value="{{.Draft.Title}}" required maxlength="200"></label>
+      <label>Description <textarea name="body" rows="10">{{.Draft.Body}}</textarea></label>
+      <div class="fields">
+        <span class="muted">Pushes {{.Branch}} as deniz-agent and opens a PR with you as reviewer and assignee. Forbidden paths and the diff size limit apply.</span>
+        <button>Open PR</button>
+      </div>
+    </form>
+  </details>
+  {{end}}
+  {{end}}
   <form class="send" hx-post="/agents/{{.ID}}/send" hx-encoding="multipart/form-data" hx-target="#flash" hx-swap="innerHTML">
     <textarea name="message" rows="3" required placeholder="Message the agent"></textarea>
     <div class="fields">
@@ -36,6 +56,7 @@
 {{define "agent-head"}}
 <div id="agent-head" class="agent-head" data-run="{{.RunID}}" hx-get="/agents/{{.ID}}/parts/agent-head" hx-trigger="every 2s, refresh from:body" hx-swap="outerHTML">
   <span class="badge {{.State}}">{{human .State}}</span>
+  {{if .PRURL}}<a class="pr" href="{{.PRURL}}" target="_blank" rel="noopener">PR #{{.PRNumber}}</a>{{end}}
   <span class="meta">{{human .Role}} · {{.Model}} · {{.Project}} · {{.Branch}}{{if .ParentID}} · round {{.Round}}, testing <a href="/agents/{{.ParentID}}">agent {{.ParentID}}</a>{{end}}</span>
   {{if .CanTest}}
   <form hx-post="/agents/{{.ID}}/test" hx-target="#flash" hx-swap="innerHTML"><button>Send to testers</button></form>

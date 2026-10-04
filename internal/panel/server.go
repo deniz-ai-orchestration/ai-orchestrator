@@ -110,6 +110,7 @@ func (s *Server) Handler() (http.Handler, error) {
 	mux.HandleFunc("POST /agents/{id}/send", s.send)
 	mux.HandleFunc("POST /agents/{id}/stop", s.stopAgent)
 	mux.HandleFunc("POST /agents/{id}/test", s.testAgent)
+	mux.HandleFunc("POST /agents/{id}/pr", s.openPR)
 	mux.HandleFunc("POST /agents/{id}/close", s.closeAgent)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(static)))
 	return guard(mux), nil

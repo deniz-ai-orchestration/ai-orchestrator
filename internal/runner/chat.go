@@ -65,9 +65,15 @@ type Chats struct {
 	// Pins returns the model you chose for a role, or "" for none. Testers
 	// use it; without it they take the developer's model.
 	Pins func(role string) string
+	// Publisher gives Open PR its GitHub client and the token git pushes
+	// with (deniz-agent's developer token). Nil turns Open PR off.
+	Publisher func() (PRClient, string, error)
+	// PushURL is where Open PR pushes a repository; tests use a local one.
+	PushURL func(repo string) string
 
 	mu     sync.Mutex
 	testMu sync.Mutex // serializes starting and settling test rounds
+	pubMu  sync.Mutex // one Open PR at a time
 	base   context.Context
 	turns  map[int64]context.CancelCauseFunc
 	wg     sync.WaitGroup
@@ -403,7 +409,7 @@ func (c *Chats) turn(ctx context.Context, id int64) error {
 	if err := c.Store.SetRunLogDir(ctx, runID, runDir); err != nil {
 		return c.endRun(ctx, runID, err)
 	}
-	gitDir, err := gitIn(ctx, a.Workspace, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	gitDir, err := c.Projects.Protect(a.Project)
 	if err != nil {
 		return c.endRun(ctx, runID, err)
 	}
@@ -431,7 +437,13 @@ func (c *Chats) turn(ctx context.Context, id int64) error {
 	if err != nil {
 		return c.endRun(ctx, runID, err)
 	}
+	// The agent commits into the project's .git, but its config, hooks and
+	// commondir are read-only: orch runs git there on the host, and pushes
+	// from it with a token.
 	spec.Binds = []string{home + ":" + HomeDir + "/.claude", inbox + ":" + InboxDir + ":ro", gitDir + ":" + gitDir}
+	for _, f := range []string{"config", "hooks", "commondir"} {
+		spec.Binds = append(spec.Binds, gitDir+"/"+f+":"+gitDir+"/"+f+":ro")
+	}
 	// Keep all of Claude's state, .claude.json included, in the saved
 	// folder; by default that file sits in HOME and is lost with the
 	// container.

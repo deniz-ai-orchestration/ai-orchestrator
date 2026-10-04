@@ -117,6 +117,7 @@
         <a href="/agents/{{.ID}}">Agent {{.ID}} · {{human .Role}}</a>
         <span class="badge {{.State}}">{{human .State}}</span>
       </div>
+      {{if .PRURL}}<div class="meta"><a href="{{.PRURL}}" target="_blank" rel="noopener">PR #{{.PRNumber}}</a></div>{{end}}
       <div class="meta">{{if .ParentID}}Testing agent {{.ParentID}} · {{end}}{{.Model}} · {{.Project}} · {{.Branch}}{{if .Since}} · {{.Since}} ago{{end}}</div>
       {{if .Last}}<p class="last">{{.Last}}</p>{{end}}
     </article>
