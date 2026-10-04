@@ -94,6 +94,11 @@ func (s *Store) RecentRuns(ctx context.Context, limit int) ([]Run, error) {
 	return s.queryRuns(ctx, `SELECT `+runCols+` FROM runs ORDER BY id DESC LIMIT ?`, limit)
 }
 
+// WorkflowRuns returns a workflow's runs, newest first, up to limit.
+func (s *Store) WorkflowRuns(ctx context.Context, workflowID int64, limit int) ([]Run, error) {
+	return s.queryRuns(ctx, `SELECT `+runCols+` FROM runs WHERE workflow_id = ? ORDER BY id DESC LIMIT ?`, workflowID, limit)
+}
+
 // GetRun returns one run, or ErrNotFound.
 func (s *Store) GetRun(ctx context.Context, id int64) (Run, error) {
 	runs, err := s.queryRuns(ctx, `SELECT `+runCols+` FROM runs WHERE id = ?`, id)

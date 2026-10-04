@@ -183,11 +183,12 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 }
 
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
-	v, err := s.view(r.Context(), "projects", "summon", "chats", "agents", "tasks", "roles", "quota")
+	v, err := s.view(r.Context(), "projects", "quota")
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
+	v.Offline = s.Chats == nil
 	s.render(w, "index.html", v)
 }
 

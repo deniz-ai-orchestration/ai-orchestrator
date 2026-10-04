@@ -14,7 +14,8 @@ import (
 func TestProjectUpsertGetList(t *testing.T) {
 	s, _ := open(t)
 	ctx := context.Background()
-	shop := Project{Path: "/home/u/projects/shop", Trusted: true, HasGit: true, GitHubRepo: "o/shop"}
+	shop := Project{Path: "/home/u/projects/shop", Trusted: true, HasGit: true, GitHubRepo: "o/shop",
+		Name: "Shop", Description: "The test store."}
 	notes := Project{Path: "/home/u/notes", Trusted: true} // chat-only: no git
 	for _, p := range []Project{shop, notes} {
 		if err := s.UpsertProject(ctx, p); err != nil {
@@ -28,7 +29,8 @@ func TestProjectUpsertGetList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !got.Trusted || !got.HasGit || got.Autonomous || got.GitHubRepo != "o/shop" || got.CreatedAt.IsZero() {
+	if !got.Trusted || !got.HasGit || got.Autonomous || got.GitHubRepo != "o/shop" || got.CreatedAt.IsZero() ||
+		got.Name != "Shop" || got.Description != "The test store." {
 		t.Fatalf("project %+v", got)
 	}
 	// The autonomous switch is yours: re-statting the path keeps it.
@@ -36,10 +38,12 @@ func TestProjectUpsertGetList(t *testing.T) {
 		t.Fatal(err)
 	}
 	shop.GitHubRepo = "o/shop-moved"
+	shop.Name, shop.Description = "Shop 2", "Renamed."
 	if err := s.UpsertProject(ctx, shop); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := s.GetProject(ctx, shop.Path); !got.Autonomous || got.GitHubRepo != "o/shop-moved" {
+	if got, _ := s.GetProject(ctx, shop.Path); !got.Autonomous || got.GitHubRepo != "o/shop-moved" ||
+		got.Name != "Shop 2" || got.Description != "Renamed." {
 		t.Fatalf("after upsert %+v", got)
 	}
 	all, err := s.ListProjects(ctx)

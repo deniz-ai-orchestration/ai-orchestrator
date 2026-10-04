@@ -17,16 +17,20 @@ type Project struct {
 	HasGit     bool
 	Autonomous bool   // the autonomous loop; only meaningful with HasGit
 	GitHubRepo string // owner/name of the origin remote, "" when not GitHub
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	// Name and Description are asked on creation; empty falls back to the
+	// directory's last folder.
+	Name        string
+	Description string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
-const projectCols = `path, trusted, has_git, autonomous, github_repo, created_at, updated_at`
+const projectCols = `path, trusted, has_git, autonomous, github_repo, name, description, created_at, updated_at`
 
 func scanProject(row scanner) (Project, error) {
 	var p Project
 	var created, updated string
-	err := row.Scan(&p.Path, &p.Trusted, &p.HasGit, &p.Autonomous, &p.GitHubRepo, &created, &updated)
+	err := row.Scan(&p.Path, &p.Trusted, &p.HasGit, &p.Autonomous, &p.GitHubRepo, &p.Name, &p.Description, &created, &updated)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Project{}, ErrNotFound
 	}
@@ -45,14 +49,15 @@ func scanProject(row scanner) (Project, error) {
 func (s *Store) UpsertProject(ctx context.Context, p Project) error {
 	now := fmtTime(s.now())
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO projects (path, trusted, has_git, autonomous, github_repo, created_at, updated_at)
-		VALUES (?, ?, ?, 0, ?, ?, ?)
+		INSERT INTO projects (path, trusted, has_git, autonomous, github_repo, name, description, created_at, updated_at)
+		VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?)
 		ON CONFLICT (path) DO UPDATE SET
 			trusted = excluded.trusted, has_git = excluded.has_git,
 			github_repo = excluded.github_repo,
+			name = excluded.name, description = excluded.description,
 			autonomous = CASE WHEN excluded.has_git = 0 THEN 0 ELSE projects.autonomous END,
 			updated_at = excluded.updated_at`,
-		p.Path, p.Trusted, p.HasGit, p.GitHubRepo, now, now)
+		p.Path, p.Trusted, p.HasGit, p.GitHubRepo, p.Name, p.Description, now, now)
 	if err != nil {
 		return err
 	}

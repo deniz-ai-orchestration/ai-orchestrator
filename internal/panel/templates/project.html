@@ -4,19 +4,20 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="htmx-config" content='{"allowEval":false,"includeIndicatorStyles":false,"historyEnabled":false}'>
-<title>orch · {{.Project.Name}}</title>
+<title>orch · {{.Project.Title}}</title>
 <link rel="stylesheet" href="/static/panel.css">
 <script src="/static/vendor/htmx.min.js"></script>
 <script src="/static/panel.js"></script>
 </head>
 <body>
 <header>
-  <h1><a href="/">orch</a> · {{.Project.Name}}</h1>
+  <h1><a href="/">orch</a> · {{.Project.Title}}</h1>
   <div id="flash" aria-live="polite"></div>
 </header>
 <main>
   <section class="project-meta">
-    <div class="meta">{{.Project.Path}} · {{if .Project.HasGit}}git{{if .Project.GitHubRepo}} · {{.Project.GitHubRepo}}{{end}}{{else}}chat-only, no git{{end}}</div>
+    {{if .Project.Description}}<p>{{.Project.Description}}</p>{{end}}
+    <div class="meta">{{.Project.Path}} · {{if .Project.HasGit}}git{{if .Project.GitHubRepo}} · {{.Project.GitHubRepo}}{{end}}{{else}}chat-only, no git{{end}} · {{.Project.Workflows}} workflows · {{.Project.Agents}} agents</div>
     <form hx-post="/projects/autonomous" hx-target="#flash" hx-swap="innerHTML">
       <input type="hidden" name="path" value="{{.Project.Path}}">
       {{if .Project.Autonomous}}<input type="hidden" name="on" value="0"><span class="badge auto">autonomous on</span><button>Switch to manual</button>
@@ -41,6 +42,7 @@
     {{end}}
     </div>
   </section>
+  {{template "roles" .}}
   {{with .Summon}}
   {{if .Enabled}}
   <section>

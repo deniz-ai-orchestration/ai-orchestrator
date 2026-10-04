@@ -25,10 +25,12 @@ import (
 type View struct {
 	Projects []ProjectRow
 	Paused   bool
-	Agents   []Card
-	Tasks    []TaskRow
-	Roles    []RoleRow
-	Models   []ModelRow
+	// Offline is set on the dashboard when summoned agents are off.
+	Offline bool
+	Agents  []Card
+	Tasks   []TaskRow
+	Roles   []RoleRow
+	Models  []ModelRow
 	// Providers and Choices fill each role's provider and model selectors:
 	// providers that can run an agent, and their models.
 	Providers []string
