@@ -28,10 +28,16 @@ CREATE TABLE workflows (
     pr_url       TEXT NOT NULL DEFAULT '',
     head_sha     TEXT NOT NULL DEFAULT '',     -- pushed head CI is watched on
     ci_state     TEXT NOT NULL DEFAULT '',     -- '', pending, green, red
+    workspace    TEXT NOT NULL DEFAULT '',
+    prompt       TEXT NOT NULL DEFAULT '',
+    model        TEXT NOT NULL DEFAULT '',
+    phase        TEXT NOT NULL DEFAULT 'idle',
+    review_cycles INTEGER NOT NULL DEFAULT 0,
     created_at   TEXT NOT NULL,
     updated_at   TEXT NOT NULL
 );
 CREATE INDEX workflows_project ON workflows (project_path, state, id);
+CREATE UNIQUE INDEX workflows_branch ON workflows(project_path, branch) WHERE branch != '' AND state = 'open';
 
 ALTER TABLE agents ADD COLUMN workflow_id INTEGER REFERENCES workflows (id);
 CREATE INDEX agents_workflow ON agents (workflow_id, id);
@@ -71,6 +77,16 @@ WHERE parent_id IS NOT NULL;
 UPDATE runs SET workflow_id = (
     SELECT a.workflow_id FROM agents a WHERE a.id = runs.agent_id)
 WHERE agent_id IS NOT NULL;
+
+-- Carry the latest root's workspace and PR metadata, not the first session's.
+UPDATE workflows SET
+ workspace = COALESCE((SELECT workspace FROM agents WHERE workflow_id=workflows.id AND parent_id IS NULL AND workspace!='' ORDER BY id DESC LIMIT 1),''),
+ model = COALESCE((SELECT model FROM agents WHERE workflow_id=workflows.id AND parent_id IS NULL ORDER BY id DESC LIMIT 1),''),
+ round = COALESCE((SELECT MAX(round) FROM agents WHERE workflow_id=workflows.id),0),
+ dev_runs = (SELECT COUNT(*) FROM agents WHERE workflow_id=workflows.id AND role='developer'),
+ pr_number = COALESCE((SELECT pr_number FROM agents WHERE workflow_id=workflows.id AND pr_number>0 ORDER BY id DESC LIMIT 1),0),
+ pr_url = COALESCE((SELECT pr_url FROM agents WHERE workflow_id=workflows.id AND pr_number>0 ORDER BY id DESC LIMIT 1),''),
+ prompt = COALESCE((SELECT body FROM messages JOIN agents ON agents.id=messages.agent_id WHERE agents.workflow_id=workflows.id AND agents.parent_id IS NULL AND messages.author='you' ORDER BY messages.id LIMIT 1),'');
 
 -- +goose Down
 DROP INDEX runs_workflow;

@@ -71,12 +71,13 @@ type Chats struct {
 	// PushURL is where Open PR pushes a repository; tests use a local one.
 	PushURL func(repo string) string
 
-	mu     sync.Mutex
-	testMu sync.Mutex // serializes starting and settling test rounds
-	pubMu  sync.Mutex // one Open PR at a time
-	base   context.Context
-	turns  map[int64]context.CancelCauseFunc
-	wg     sync.WaitGroup
+	mu         sync.Mutex
+	testMu     sync.Mutex // serializes starting and settling test rounds
+	pubMu      sync.Mutex // one Open PR at a time
+	workflowMu sync.Mutex
+	base       context.Context
+	turns      map[int64]context.CancelCauseFunc
+	wg         sync.WaitGroup
 }
 
 // File is an attachment.
@@ -298,7 +299,9 @@ func (c *Chats) Close(ctx context.Context, id int64) error {
 	if a.State == store.AgentTesting {
 		return errors.New("the agent's testers are running; wait for them or stop them first")
 	}
-	if a.Workspace != "" {
+	// A workflow developer shares its workflow's checkout, which CloseWorkflow
+	// removes; every other agent owns its worktree.
+	if a.Workspace != "" && (a.WorkflowID == 0 || a.Role != "developer") {
 		if err := c.Projects.RemoveWorktree(ctx, a.Project, a.Workspace); err != nil {
 			return err
 		}
@@ -357,13 +360,18 @@ func (c *Chats) log() *slog.Logger {
 
 func (c *Chats) agentDir(id int64) string { return filepath.Join(c.Dir, fmt.Sprint(id)) }
 
-// fail records an orch note and marks the agent failed.
+// fail records an orch note and marks the agent failed, unless you closed
+// it meanwhile. The state change is one conditional write: a turn whose
+// tail (for example startTests) fails on a worktree Close just removed
+// must not flip the agent back from closed to failed.
 func (c *Chats) fail(ctx context.Context, id int64, note string) {
 	if _, err := c.Store.AddMessage(ctx, store.Message{AgentID: id, Author: store.FromOrch, Body: note}); err != nil {
 		c.log().Error("add message", "agent", id, "err", err)
 	}
-	if err := c.Store.SetAgentState(ctx, id, store.AgentFailed); err != nil {
+	if closed, err := c.Store.SetAgentStateUnlessClosed(ctx, id, store.AgentFailed); err != nil {
 		c.log().Error("set agent state", "agent", id, "err", err)
+	} else if closed {
+		c.log().Info("turn ended after its agent was closed", "agent", id)
 	}
 }
 
@@ -425,9 +433,20 @@ func (c *Chats) turn(ctx context.Context, id int64) error {
 	if err := c.Store.SetRunLogDir(ctx, runID, runDir); err != nil {
 		return c.endRun(ctx, runID, err)
 	}
-	gitDir, err := c.Projects.Protect(a.Project)
-	if err != nil {
-		return c.endRun(ctx, runID, err)
+	gitDir := ""
+	hasGit := true
+	if a.WorkflowID != 0 {
+		p, e := c.Store.GetProject(ctx, a.Project)
+		if e != nil || !p.Trusted {
+			return c.endRun(ctx, runID, errors.New("project is not trusted"))
+		}
+		hasGit = p.HasGit
+	}
+	if hasGit {
+		gitDir, err = c.Projects.Protect(a.Project)
+		if err != nil {
+			return c.endRun(ctx, runID, err)
+		}
 	}
 	readOnly := a.Role != "developer"
 	tester := a.ParentID != 0
@@ -456,9 +475,12 @@ func (c *Chats) turn(ctx context.Context, id int64) error {
 	// The agent commits into the project's .git, but its config, hooks and
 	// commondir are read-only: orch runs git there on the host, and pushes
 	// from it with a token.
-	spec.Binds = []string{home + ":" + HomeDir + "/.claude", inbox + ":" + InboxDir + ":ro", gitDir + ":" + gitDir}
-	for _, f := range []string{"config", "hooks", "commondir"} {
-		spec.Binds = append(spec.Binds, gitDir+"/"+f+":"+gitDir+"/"+f+":ro")
+	spec.Binds = []string{home + ":" + HomeDir + "/.claude", inbox + ":" + InboxDir + ":ro"}
+	if hasGit {
+		spec.Binds = append(spec.Binds, gitDir+":"+gitDir)
+		for _, f := range []string{"config", "hooks", "commondir"} {
+			spec.Binds = append(spec.Binds, gitDir+"/"+f+":"+gitDir+"/"+f+":ro")
+		}
 	}
 	// Keep all of Claude's state, .claude.json included, in the saved
 	// folder; by default that file sits in HOME and is lost with the
@@ -544,7 +566,7 @@ func (c *Chats) turn(ctx context.Context, id int64) error {
 	if err := c.Store.SetAgentState(bg, id, store.AgentDone); err != nil {
 		return err
 	}
-	if a.Role == "developer" {
+	if a.Role == "developer" && a.WorkflowID == 0 {
 		return c.startTests(bg, id, false)
 	}
 	return nil
@@ -619,13 +641,17 @@ func turnPrompt(a store.Agent, msgs []store.Message, readOnly bool) string {
 		fmt.Fprintf(&b, "You are a %s agent, summoned from orch on PC2 to check another agent's work on the project %q. %s is a checkout of commit %s of branch %s.\n\n",
 			strings.ReplaceAll(a.Role, "_", " "), a.Project, WorkDir, short(a.Base), a.Branch)
 	case a.Session == "":
-		fmt.Fprintf(&b, "You are a %s agent, summoned from orch on PC2. You work on the project %q in %s, a git worktree on branch %s.\n\n",
-			strings.ReplaceAll(a.Role, "_", " "), a.Project, WorkDir, a.Branch)
+		if a.Branch == "" {
+			fmt.Fprintf(&b, "You are a %s agent working in %s, a chat-only project without git. Do not commit or push.\n\n", a.Role, WorkDir)
+		} else {
+			fmt.Fprintf(&b, "You are a %s agent, summoned from orch on PC2. You work on the project %q in %s, a git worktree on branch %s.\n\n",
+				strings.ReplaceAll(a.Role, "_", " "), a.Project, WorkDir, a.Branch)
+		}
 	}
 	if a.Session == "" {
 		if readOnly {
 			b.WriteString("- You are read-only: do not edit files or commit. Read the code, build it, run the tests and report what you find.\n")
-		} else {
+		} else if a.Branch != "" {
 			fmt.Fprintf(&b, "- Work only in %s. Commit your changes to this branch with clear messages. Do not push and do not open pull requests: the user does that from orch.\n", WorkDir)
 		}
 		if a.ParentID != 0 {

@@ -98,6 +98,28 @@ func (s *Store) SetAgentState(ctx context.Context, id int64, state string) error
 	return s.exec1(ctx, `UPDATE agents SET state = ?, updated_at = ? WHERE id = ?`, state, fmtTime(s.now()), id)
 }
 
+// SetAgentStateUnlessClosed moves an agent to state unless it is closed,
+// and reports whether it was already closed. The check and the write are
+// one statement, so a late turn failure cannot flip a concurrent Close.
+func (s *Store) SetAgentStateUnlessClosed(ctx context.Context, id int64, state string) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE agents SET state = ?, updated_at = ? WHERE id = ? AND state != ?`,
+		state, fmtTime(s.now()), id, AgentClosed)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if n == 1 {
+		return false, nil
+	}
+	if _, err := s.GetAgent(ctx, id); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // SetAgentStateIf moves an agent from one state to another and reports
 // whether it was in the first.
 func (s *Store) SetAgentStateIf(ctx context.Context, id int64, from, to string) (bool, error) {

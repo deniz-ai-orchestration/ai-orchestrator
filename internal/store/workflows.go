@@ -29,21 +29,26 @@ const (
 // Round, DevRuns and CIAttempts bound the autonomous loops with the
 // config's review_cycles, dev_runs and ci_attempts limits.
 type Workflow struct {
-	ID          int64
-	ProjectPath string
-	Title       string
-	Branch      string
-	Base        string // commit the branch started from
-	State       string
-	Round       int
-	DevRuns     int
-	CIAttempts  int
-	PRNumber    int
-	PRURL       string
-	HeadSHA     string // the pushed head CI is watched on
-	CIState     string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID           int64
+	ProjectPath  string
+	Title        string
+	Branch       string
+	Base         string // commit the branch started from
+	State        string
+	Round        int
+	DevRuns      int
+	CIAttempts   int
+	PRNumber     int
+	PRURL        string
+	HeadSHA      string // the pushed head CI is watched on
+	CIState      string
+	Workspace    string
+	Prompt       string
+	Model        string
+	Phase        string
+	ReviewCycles int
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 // CreateWorkflow records a new open workflow and returns it. The project
@@ -64,17 +69,20 @@ func (s *Store) CreateWorkflow(ctx context.Context, w Workflow) (Workflow, error
 		return w, err
 	}
 	w.ID, err = res.LastInsertId()
+	if err == nil {
+		err = s.SetWorkflowDetails(ctx, w.ID, w.Prompt, w.Model)
+	}
 	return w, err
 }
 
 const workflowCols = `id, project_path, title, branch, base, state, round, dev_runs, ci_attempts,
-	pr_number, pr_url, head_sha, ci_state, created_at, updated_at`
+	pr_number, pr_url, head_sha, ci_state, created_at, updated_at, workspace, prompt, model, phase, review_cycles`
 
 func scanWorkflow(row scanner) (Workflow, error) {
 	var w Workflow
 	var created, updated string
 	err := row.Scan(&w.ID, &w.ProjectPath, &w.Title, &w.Branch, &w.Base, &w.State, &w.Round,
-		&w.DevRuns, &w.CIAttempts, &w.PRNumber, &w.PRURL, &w.HeadSHA, &w.CIState, &created, &updated)
+		&w.DevRuns, &w.CIAttempts, &w.PRNumber, &w.PRURL, &w.HeadSHA, &w.CIState, &created, &updated, &w.Workspace, &w.Prompt, &w.Model, &w.Phase, &w.ReviewCycles)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Workflow{}, ErrNotFound
 	}

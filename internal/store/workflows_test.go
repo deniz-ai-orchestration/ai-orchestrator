@@ -339,3 +339,63 @@ func mustRun(t *testing.T, s *Store, id int64) Run {
 	}
 	return r
 }
+
+func TestSetAgentStateUnlessClosed(t *testing.T) {
+	s, _ := open(t)
+	ctx := context.Background()
+	a, err := s.CreateAgent(ctx, Agent{Role: "developer", Provider: "claude", Model: "sonnet", Project: "shop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if closed, err := s.SetAgentStateUnlessClosed(ctx, a.ID, AgentFailed); err != nil || closed {
+		t.Fatalf("working agent: closed=%v err=%v", closed, err)
+	}
+	if got, _ := s.GetAgent(ctx, a.ID); got.State != AgentFailed {
+		t.Fatalf("state %s", got.State)
+	}
+	if err := s.SetAgentState(ctx, a.ID, AgentClosed); err != nil {
+		t.Fatal(err)
+	}
+	// A turn that ends after its agent was closed leaves it closed.
+	if closed, err := s.SetAgentStateUnlessClosed(ctx, a.ID, AgentFailed); err != nil || !closed {
+		t.Fatalf("closed agent: closed=%v err=%v", closed, err)
+	}
+	if got, _ := s.GetAgent(ctx, a.ID); got.State != AgentClosed {
+		t.Fatalf("state %s", got.State)
+	}
+	if _, err := s.SetAgentStateUnlessClosed(ctx, 999, AgentFailed); err != ErrNotFound {
+		t.Fatalf("missing agent: %v", err)
+	}
+}
+
+func TestNonGitProjectStaysManual(t *testing.T) {
+	s, _ := open(t)
+	ctx := context.Background()
+	const notes = "/home/u/notes"
+	if err := s.UpsertProject(ctx, Project{Path: notes, Trusted: true}); err != nil {
+		t.Fatal(err)
+	}
+	// Chat-only: the autonomous switch cannot be turned on.
+	if err := s.SetProjectAutonomous(ctx, notes, true); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.GetProject(ctx, notes); got.Autonomous {
+		t.Fatalf("chat-only project %+v", got)
+	}
+	// Gaining git unlocks it; losing git forces it off again.
+	if err := s.UpsertProject(ctx, Project{Path: notes, Trusted: true, HasGit: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetProjectAutonomous(ctx, notes, true); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.GetProject(ctx, notes); !got.Autonomous {
+		t.Fatalf("git project %+v", got)
+	}
+	if err := s.UpsertProject(ctx, Project{Path: notes, Trusted: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.GetProject(ctx, notes); got.Autonomous {
+		t.Fatalf("git removed %+v", got)
+	}
+}

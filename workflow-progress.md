@@ -30,11 +30,11 @@ findings under "Notes".
 
 ## M3 — workflow API
 
-- [ ] `SummonWorkflow` (creates workflow + branch + first dev + worktree)
-- [ ] `SummonAgent` (replacement / manual tester in same workflow)
-- [ ] Workflow-scoped `Send/Test/OpenPR/Close`
-- [ ] Tester-first only when PR already open
-- [ ] `go test -race ./internal/runner/...` green
+- [x] `SummonWorkflow` (creates workflow + branch + first dev + worktree)
+- [x] `SummonAgent` (replacement / manual tester in same workflow)
+- [x] Workflow-scoped `Send/Test/OpenPR/Close`
+- [x] Tester-first only when PR already open
+- [x] `go test -race ./internal/runner/...` green
 
 ## M4 — panel hierarchy
 
