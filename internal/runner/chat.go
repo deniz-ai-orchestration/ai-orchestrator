@@ -393,7 +393,7 @@ func (c *Chats) turn(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
-	runID, err := c.Store.StartRun(ctx, store.Run{AgentID: id, Role: a.Role, Provider: m.Provider, Model: a.Model})
+	runID, err := c.Store.StartRun(ctx, store.Run{AgentID: id, WorkflowID: a.WorkflowID, Role: a.Role, Provider: m.Provider, Model: a.Model})
 	if err != nil {
 		return err
 	}
