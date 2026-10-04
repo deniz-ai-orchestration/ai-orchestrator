@@ -1,0 +1,62 @@
+# Workflow plan — progress tracker
+
+Plan: `workflow-plan.md`. Machine: PC2 (Ubuntu 24.04). Updated: 2026-10-04 (PC1).
+
+How to use after model/quota switch: open this file + `workflow-plan.md`, continue
+from the first unchecked box. Keep boxes checked as you finish; note PC2-only
+findings under "Notes".
+
+## Handoff state
+
+- [ ] PC2 repo status checked (`git status`, uncommitted/unpushed handled)
+- [ ] `workflow-plan.md` read on PC2
+- [ ] Baseline green on PC2 (`gofmt`, `vet`, `test -race`, `build`, `check-config`)
+
+## M1 — store + migrations + tests
+
+- [ ] `00008_projects_workflows.sql` (`projects`, `workflows`, `agents.workflow_id`, `runs.workflow_id`)
+- [ ] Backfill existing agents into workflows
+- [ ] Store CRUD + grouping queries (`OpenWorkflows`, `WorkflowAgents`, `ProjectCounts`)
+- [ ] `go test -race ./internal/store/...` green
+
+## M2 — trust + abs-path worktree
+
+- [ ] `Projects` supports trusted abs roots (replace subfolder-only logic)
+- [ ] `Resolve/Stat/List` + `.git` detect + origin parse
+- [ ] `POST /projects/trust` confirm screen
+- [ ] `Protect/AddWorktree/Dirty/RepoOf` on `project_path`
+- [ ] Config `projects.dir` -> `trusted_roots` (+ example config updated)
+- [ ] Non-git project forces `autonomous=0`, hides `Open PR`
+
+## M3 — workflow API
+
+- [ ] `SummonWorkflow` (creates workflow + branch + first dev + worktree)
+- [ ] `SummonAgent` (replacement / manual tester in same workflow)
+- [ ] Workflow-scoped `Send/Test/OpenPR/Close`
+- [ ] Tester-first only when PR already open
+- [ ] `go test -race ./internal/runner/...` green
+
+## M4 — panel hierarchy
+
+- [ ] `GET /` dashboard: project sidebar + badges, no terminals
+- [ ] `GET /projects/<id>`: workflow list + new-workflow form + autonomous switch
+- [ ] `GET /workflows/<id>`: agents by round + PR/CI card + actions
+- [ ] `GET /agents/<id>`: breadcrumb back to workflow
+- [ ] `View` loaders + routes wired
+
+## M5 — autonomous CI loop + parallel test
+
+- [ ] CI polling for workflow heads
+- [ ] Autonomous ON e2e: dev -> test -> PR -> CI -> review -> fix (bounded by limits)
+- [ ] Monorepo parallel test: 2 workflows, same repo, different branches
+- [ ] Stop-dev + summon-new-dev continues same branch
+- [ ] Full CI green (`gofmt`, `vet`, `test -race`, `build`, `check-config`)
+
+## Deferred (do NOT do in this job)
+
+- [ ] Summon memory options (empty / project-memory / from-checkpoint)
+- [ ] Planner role, auto compact/clear
+
+## Notes (PC2 findings, append here)
+
+- (empty)
