@@ -1,6 +1,6 @@
 # Workflow plan — progress tracker
 
-Plan: `workflow-plan.md`. Machine: PC2 (Ubuntu 24.04). Updated: 2026-10-04 (PC1).
+Plan: `workflow-plan.md`. Machine: PC2 (Ubuntu 24.04). Updated: 2026-10-04 (PC2).
 
 How to use after model/quota switch: open this file + `workflow-plan.md`, continue
 from the first unchecked box. Keep boxes checked as you finish; note PC2-only
@@ -8,9 +8,9 @@ findings under "Notes".
 
 ## Handoff state
 
-- [ ] PC2 repo status checked (`git status`, uncommitted/unpushed handled)
-- [ ] `workflow-plan.md` read on PC2
-- [ ] Baseline green on PC2 (`gofmt`, `vet`, `test -race`, `build`, `check-config`)
+- [x] PC2 repo status checked (`git status`, uncommitted/unpushed handled)
+- [x] `workflow-plan.md` read on PC2
+- [x] Baseline green on PC2 (`gofmt`, `vet`, `test -race`, `build`, `check-config`)
 
 ## M1 — store + migrations + tests
 
@@ -59,4 +59,14 @@ findings under "Notes".
 
 ## Notes (PC2 findings, append here)
 
-- (empty)
+- 2026-10-04 (PC2): repo clean on `main` @ 6ac8140, in sync with origin. The PR #19
+  CI failure was a flake, unrelated to the PR's content (it only added these two
+  markdown files; the post-merge CI run on main passed). `TestTestersIncompleteNeedsYou`
+  (internal/runner) failed because each finished tester calls `settleTests`: when both
+  testers finish near-simultaneously, the second call (serialized on `testMu`) re-settled
+  the already-retired round and re-posted the testers' findings to the developer, so the
+  test's "last message" assertion saw the duplicate report. Fix: `settleTests` now
+  returns early when every tester of the current round is already closed (settled once).
+  Verified with `go test -race -count=40` on the tester tests (flake reproduced ~15%
+  before the fix) and a full green baseline (`gofmt`, `vet`, `test -race ./...`,
+  `build`, `check-config`).

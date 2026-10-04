@@ -223,6 +223,7 @@ func (c *Chats) settleTests(ctx context.Context, devID int64, launch bool) error
 		return err
 	}
 	var round []store.Agent
+	closed := 0
 	for _, t := range all {
 		if t.Round != dev.Round {
 			// A round you cut short by messaging the developer: its
@@ -237,7 +238,16 @@ func (c *Chats) settleTests(ctx context.Context, devID int64, launch bool) error
 		if t.State == store.AgentWorking {
 			return nil // the round is not over yet
 		}
+		if t.State == store.AgentClosed {
+			closed++
+		}
 		round = append(round, t)
+	}
+	if closed > 0 && closed == len(round) {
+		// Every tester of the round is retired: an earlier call already
+		// settled it and reported the findings. Settling it again would
+		// repeat them.
+		return nil
 	}
 	var reports, problems []string
 	blocking := false
