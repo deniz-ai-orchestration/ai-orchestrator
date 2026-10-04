@@ -111,6 +111,22 @@ func (c *Chats) Run(ctx context.Context) error {
 // Recover marks agents whose turn a restart cut off as stopped. Call it
 // once before Run, after the runs were marked interrupted.
 func (c *Chats) Recover(ctx context.Context) error {
+	ps, err := c.Store.ListProjects(ctx)
+	if err != nil {
+		return err
+	}
+	for _, p := range ps {
+		if filepath.IsAbs(p.Path) {
+			continue
+		}
+		info, err := c.Projects.Stat(ctx, p.Path)
+		if err != nil {
+			return fmt.Errorf("resolve legacy project %s: %w", p.Path, err)
+		}
+		if err := c.Store.ResolveLegacyProject(ctx, p.Path, store.Project{Path: info.Path, HasGit: info.HasGit, GitHubRepo: info.Repo}); err != nil {
+			return err
+		}
+	}
 	ids, err := c.Store.InterruptAgents(ctx)
 	if err != nil {
 		return err

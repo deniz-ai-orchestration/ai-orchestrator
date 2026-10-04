@@ -40,7 +40,8 @@ func scanProject(row scanner) (Project, error) {
 
 // UpsertProject records what orch found at a path and whether you trust
 // it. The autonomous switch belongs to you, so an existing row keeps its
-// value; new rows start with it off.
+// value and new rows start with it off; a path that lost its .git has the
+// switch forced off.
 func (s *Store) UpsertProject(ctx context.Context, p Project) error {
 	now := fmtTime(s.now())
 	_, err := s.db.ExecContext(ctx, `
@@ -48,7 +49,9 @@ func (s *Store) UpsertProject(ctx context.Context, p Project) error {
 		VALUES (?, ?, ?, 0, ?, ?, ?)
 		ON CONFLICT (path) DO UPDATE SET
 			trusted = excluded.trusted, has_git = excluded.has_git,
-			github_repo = excluded.github_repo, updated_at = excluded.updated_at`,
+			github_repo = excluded.github_repo,
+			autonomous = CASE WHEN excluded.has_git = 0 THEN 0 ELSE projects.autonomous END,
+			updated_at = excluded.updated_at`,
 		p.Path, p.Trusted, p.HasGit, p.GitHubRepo, now, now)
 	if err != nil {
 		return err
@@ -80,7 +83,8 @@ func (s *Store) ListProjects(ctx context.Context) ([]Project, error) {
 }
 
 // SetProjectAutonomous switches a project's autonomous loop on or off.
+// The loop needs git: on a chat-only project the switch is forced off.
 func (s *Store) SetProjectAutonomous(ctx context.Context, path string, on bool) error {
-	return s.exec1(ctx, `UPDATE projects SET autonomous = ?, updated_at = ? WHERE path = ?`,
+	return s.exec1(ctx, `UPDATE projects SET autonomous = (? AND has_git), updated_at = ? WHERE path = ?`,
 		on, fmtTime(s.now()), path)
 }

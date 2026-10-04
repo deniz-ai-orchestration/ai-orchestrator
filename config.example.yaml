@@ -20,7 +20,8 @@ panel:
   listen: 192.168.1.20:8787            # PC2's LAN address only; no login, open it by IP
 
 projects:
-  dir: ~/projects                      # one git repo per folder; summoned agents get a worktree of one
+  trusted_roots: [~/projects]            # a project path must be inside one of these; you trust each project in the panel
+  # dir: ~/projects                      # legacy: one git repo per folder, summonable by folder name
 
 runner:
   image: orch-agent:latest             # docker build -t orch-agent docker/agent

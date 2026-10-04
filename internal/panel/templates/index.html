@@ -16,6 +16,8 @@
   <div id="flash" aria-live="polite"></div>
 </header>
 <main>
+  {{template "add-project" .}}
+  {{template "projects" .}}
   {{template "summon" .}}
   {{template "chats" .}}
   {{template "agents" .}}

@@ -157,7 +157,7 @@ func serve(ctx context.Context, cfg *config.Config, logOut io.Writer) error {
 	follower := &ci.Follower{Store: st, GH: gh, Helper: helper.FromConfig(cfg), Cfg: cfg,
 		Interval: cfg.GitHub.PollInterval, Log: log.With("component", "ci")}
 	chats := &runner.Chats{Store: st, Cfg: cfg, Containers: runner.Docker{},
-		Projects: runner.Projects{Dir: cfg.Projects.Dir},
+		Projects: runner.Projects{Dir: cfg.Projects.Dir, TrustedRoots: cfg.Projects.TrustedRoots, Store: st},
 		Dir:      filepath.Join(cfg.DataDir, "agents"), RunsDir: agents.RunsDir, User: agents.User,
 		Quota: agents.Quota, Log: log.With("component", "chats"),
 		Publisher: func() (runner.PRClient, string, error) {

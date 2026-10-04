@@ -1,0 +1,16 @@
+{{define "projects"}}
+<section id="projects" hx-get="/parts/projects" hx-trigger="every 10s, refresh from:body" hx-swap="outerHTML">
+<h2>Projects</h2>
+{{range .Projects}}<p>{{.Name}} · {{.Path}} · {{if .HasGit}}git{{else}}chat-only{{end}} · {{if .Autonomous}}autonomous{{else}}manual{{end}}</p>{{end}}
+</section>
+{{end}}
+{{define "add-project"}}
+<section><h2>Add project</h2>
+<form hx-post="/projects/inspect" hx-target="#trust"><label>PC2 directory <input name="path" required placeholder="/home/selman/orch-work/project"></label><button>Inspect</button></form>
+<div id="trust"></div></section>
+{{end}}
+{{define "trust-confirm"}}
+<p>Trust <strong>{{.Path}}</strong>? {{.Files}} files · git {{if .HasGit}}yes{{else}}no{{end}}{{if .Repo}} · {{.Repo}}{{end}}</p>
+<p>{{.Why}}</p>
+<form hx-post="/projects/trust" hx-target="#flash"><input type="hidden" name="path" value="{{.Path}}"><button>Trust this directory</button></form>
+{{end}}

@@ -105,6 +105,8 @@ func (s *Server) Handler() (http.Handler, error) {
 	mux.HandleFunc("GET /runs/{id}", s.runPage)
 	mux.HandleFunc("GET /runs/{id}/stream", s.stream)
 	mux.HandleFunc("POST /agents", s.summon)
+	mux.HandleFunc("POST /projects/inspect", s.inspectProject)
+	mux.HandleFunc("POST /projects/trust", s.trustProject)
 	mux.HandleFunc("GET /agents/{id}", s.agentPage)
 	mux.HandleFunc("GET /agents/{id}/parts/{name}", s.agentPart)
 	mux.HandleFunc("POST /agents/{id}/send", s.send)
@@ -170,7 +172,7 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 }
 
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
-	v, err := s.view(r.Context(), "summon", "chats", "agents", "tasks", "roles", "quota")
+	v, err := s.view(r.Context(), "projects", "summon", "chats", "agents", "tasks", "roles", "quota")
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -181,7 +183,7 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 func (s *Server) part(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	switch name {
-	case "chats", "agents", "tasks", "roles", "quota", "pause":
+	case "projects", "chats", "agents", "tasks", "roles", "quota", "pause":
 	default:
 		http.NotFound(w, r)
 		return

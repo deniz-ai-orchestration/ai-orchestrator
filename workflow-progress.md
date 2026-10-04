@@ -14,18 +14,18 @@ findings under "Notes".
 
 ## M1 — store + migrations + tests
 
-- [ ] `00008_projects_workflows.sql` (`projects`, `workflows`, `agents.workflow_id`, `runs.workflow_id`)
-- [ ] Backfill existing agents into workflows
-- [ ] Store CRUD + grouping queries (`OpenWorkflows`, `WorkflowAgents`, `ProjectCounts`)
-- [ ] `go test -race ./internal/store/...` green
+- [x] `00008_projects_workflows.sql` (`projects`, `workflows`, `agents.workflow_id`, `runs.workflow_id`)
+- [x] Backfill existing agents into workflows
+- [x] Store CRUD + grouping queries (`OpenWorkflows`, `WorkflowAgents`, `ProjectCounts`)
+- [x] `go test -race ./internal/store/...` green
 
 ## M2 — trust + abs-path worktree
 
-- [ ] `Projects` supports trusted abs roots (replace subfolder-only logic)
-- [ ] `Resolve/Stat/List` + `.git` detect + origin parse
-- [ ] `POST /projects/trust` confirm screen
-- [ ] `Protect/AddWorktree/Dirty/RepoOf` on `project_path`
-- [ ] Config `projects.dir` -> `trusted_roots` (+ example config updated)
+- [x] `Projects` supports trusted abs roots (replace subfolder-only logic)
+- [x] `Resolve/Stat/List` + `.git` detect + origin parse
+- [x] `POST /projects/trust` confirm screen
+- [x] `Protect/AddWorktree/Dirty/RepoOf` on `project_path`
+- [x] Config `projects.dir` -> `trusted_roots` (+ example config updated)
 - [ ] Non-git project forces `autonomous=0`, hides `Open PR`
 
 ## M3 — workflow API

@@ -22,11 +22,12 @@ import (
 
 // View is everything the page shows. Only the requested sections are filled.
 type View struct {
-	Paused bool
-	Agents []Card
-	Tasks  []TaskRow
-	Roles  []RoleRow
-	Models []ModelRow
+	Projects []ProjectRow
+	Paused   bool
+	Agents   []Card
+	Tasks    []TaskRow
+	Roles    []RoleRow
+	Models   []ModelRow
 	// Providers and Choices fill each role's provider and model selectors:
 	// providers that can run an agent, and their models.
 	Providers []string
@@ -88,6 +89,8 @@ func (s *Server) view(ctx context.Context, parts ...string) (View, error) {
 	}
 	for _, p := range parts {
 		switch p {
+		case "projects":
+			err = s.projects(ctx, &v)
 		case "agents":
 			err = s.agents(ctx, &v)
 		case "tasks":
