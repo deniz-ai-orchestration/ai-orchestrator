@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -103,5 +104,67 @@ func TestAutonomousSwitch(t *testing.T) {
 	}
 	if _, _, body := e.postForm(t, "/projects/autonomous", true, map[string]string{"path": shop, "on": "0"}, nil); !strings.Contains(body, "manual") {
 		t.Fatalf("switch off: %s", body)
+	}
+}
+
+func TestNewProjectFlow(t *testing.T) {
+	e := newChatEnv(t)
+	shop, err := e.chats.Projects.Resolve("shop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	form := map[string]string{"name": "Shop", "description": "The test store.", "path": shop}
+	_, _, body := e.postForm(t, "/projects/inspect", true, form, nil)
+	for _, want := range []string{"Trust <strong>Shop</strong>", "The test store.", `name="description" value="The test store."`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("confirm lacks %q:\n%s", want, body)
+		}
+	}
+	if _, _, body := e.postForm(t, "/projects/trust", true, form, nil); !strings.Contains(body, "Trusted") {
+		t.Fatalf("trust: %s", body)
+	}
+	p, err := e.st.GetProject(context.Background(), shop)
+	if err != nil || p.Name != "Shop" || p.Description != "The test store." || !p.Trusted {
+		t.Fatalf("project %+v %v", p, err)
+	}
+	if _, page := e.get(t, "/project?path="+url.QueryEscape(shop)); !strings.Contains(page, "Shop") ||
+		!strings.Contains(page, "The test store.") || !strings.Contains(page, "Roles") {
+		t.Errorf("project page:\n%s", page)
+	}
+	if _, cards := e.get(t, "/"); !strings.Contains(cards, "Shop") || !strings.Contains(cards, "The test store.") {
+		t.Error("dashboard lacks the project card")
+	}
+	// A name is required; the description is capped.
+	if _, _, body := e.postForm(t, "/projects/inspect", true, map[string]string{"path": shop}, nil); !strings.Contains(body, "a name") {
+		t.Fatalf("nameless: %s", body)
+	}
+	if _, _, body := e.postForm(t, "/projects/inspect", true,
+		map[string]string{"name": "x", "description": strings.Repeat("d", 501), "path": shop}, nil); !strings.Contains(body, "500") {
+		t.Fatalf("long description: %s", body)
+	}
+}
+
+func TestWorkflowRunsAreScoped(t *testing.T) {
+	e := newChatEnv(t)
+	shop := trustTestProject(t, e, true)
+	for i, prompt := range []string{"First job", "Second job"} {
+		code, h, body := e.postForm(t, "/workflows", true, map[string]string{
+			"project": shop, "model": "claude-sonnet", "message": prompt}, nil)
+		if want := "/workflows/" + strconv.Itoa(i+1); code != 200 || h.Get("HX-Redirect") != want {
+			t.Fatalf("new workflow: %d %q %s", code, h.Get("HX-Redirect"), body)
+		}
+		e.waitIdle(t, int64(i+1))
+	}
+	if rs, _ := e.st.WorkflowRuns(context.Background(), 1, 10); len(rs) != 1 || rs[0].AgentID != 1 {
+		t.Fatalf("workflow 1 runs: %+v", rs)
+	}
+	_, first := e.get(t, "/workflows/1")
+	_, second := e.get(t, "/workflows/2")
+	for _, tc := range []struct {
+		page, want, leak string
+	}{{first, "Run 1", "Run 2"}, {second, "Run 2", "Run 1"}} {
+		if !strings.Contains(tc.page, tc.want) || strings.Contains(tc.page, tc.leak) {
+			t.Errorf("runs leak across workflows: want %q without %q", tc.want, tc.leak)
+		}
 	}
 }

@@ -1,29 +1,42 @@
 {{define "projects"}}
 <section id="projects" hx-get="/parts/projects" hx-trigger="every 10s, refresh from:body" hx-swap="outerHTML">
 <h2>Projects</h2>
-{{if not .Projects}}<p class="muted">No trusted projects yet. Add a PC2 directory below.</p>{{end}}
+{{if not .Projects}}<p class="muted">No projects yet. Name your first one below.</p>{{end}}
 <div class="cards">
 {{range .Projects}}
   <article class="card">
     <div class="card-head">
-      <a href="/project?path={{.Path | query}}">{{.Name}}</a>
+      <a href="/project?path={{.Path | query}}">{{.Title}}</a>
       <span class="badge {{if .HasGit}}git{{else}}chat{{end}}">{{if .HasGit}}git{{else}}chat-only{{end}}</span>
       {{if .Autonomous}}<span class="badge auto">autonomous</span>{{end}}
       {{if .Working}}<span class="badge working">{{.Working}} working</span>{{end}}
     </div>
-    <div class="meta">{{.Workflows}} workflows · {{.Agents}} agents</div>
+    {{if .Description}}<p class="last">{{.Description}}</p>{{end}}
+    <div class="meta">{{.Path}} · {{.Workflows}} workflows · {{.Agents}} agents</div>
   </article>
 {{end}}
 </div>
 </section>
 {{end}}
 {{define "add-project"}}
-<section><h2>Add project</h2>
-<form hx-post="/projects/inspect" hx-target="#trust"><label>PC2 directory <input name="path" required placeholder="/home/selman/orch-work/project"></label><button>Inspect</button></form>
+<section><h2>New project</h2>
+{{if .Offline}}<p class="muted">Agents are not running in this orch.</p>{{else}}
+<form class="summon" hx-post="/projects/inspect" hx-target="#trust">
+  <div class="fields">
+    <label>Name <input name="name" required maxlength="100" placeholder="car-guessr" autocomplete="off" spellcheck="false"></label>
+    <label>Project directory <input name="path" required placeholder="/home/selman/orch-work/car-guessr-flow" autocomplete="off" spellcheck="false"></label>
+  </div>
+  <textarea name="description" rows="2" maxlength="500" placeholder="Optional description"></textarea>
+  <div class="fields"><button>Inspect directory</button></div>
+</form>
 <div id="trust"></div></section>
 {{end}}
+{{end}}
 {{define "trust-confirm"}}
-<p>Trust <strong>{{.Path}}</strong>? {{.Files}} files · git {{if .HasGit}}yes{{else}}no{{end}}{{if .Repo}} · {{.Repo}}{{end}}</p>
+<p>Trust <strong>{{.Name}}</strong> at {{.Path}}? {{.Files}} files · git {{if .HasGit}}yes{{else}}no{{end}}{{if .Repo}} · {{.Repo}}{{end}}</p>
+{{if .Description}}<p>{{.Description}}</p>{{end}}
 <p>{{.Why}}</p>
-<form hx-post="/projects/trust" hx-target="#flash"><input type="hidden" name="path" value="{{.Path}}"><button>Trust this directory</button></form>
+<form hx-post="/projects/trust" hx-target="#flash">
+<input type="hidden" name="name" value="{{.Name}}"><input type="hidden" name="description" value="{{.Description}}"><input type="hidden" name="path" value="{{.Path}}">
+<button>Trust this directory</button></form>
 {{end}}

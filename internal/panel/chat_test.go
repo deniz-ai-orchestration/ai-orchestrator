@@ -145,18 +145,21 @@ func (e *chatEnv) waitIdle(t *testing.T, id int64) {
 	t.Fatal("agent still working")
 }
 
-func TestSummonForm(t *testing.T) {
+func TestProjectsHome(t *testing.T) {
 	e := newChatEnv(t)
 	_, body := e.get(t, "/")
-	for _, want := range []string{`hx-post="/agents"`, `<option value="shop">shop</option>`, `value="claude-sonnet"`,
-		`<option value="developer" data-model="claude-sonnet">developer</option>`, `id="chats"`} {
+	// The dashboard is projects and quota: agents, runs, tasks and roles
+	// live on the project and workflow pages now.
+	for _, want := range []string{`id="projects"`, `hx-post="/projects/inspect"`, `name="name"`,
+		`name="description"`, `name="path"`, `id="quota"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("index lacks %q", want)
 		}
 	}
-	form := body[strings.Index(body, `id="summon"`):strings.Index(body, `id="chats"`)]
-	if strings.Contains(form, "codex-sol") || !strings.Contains(form, `value="claude-opus"`) {
-		t.Error("the summon form offers a model that cannot chat yet")
+	for _, gone := range []string{`hx-post="/agents"`, `id="summon"`, `id="chats"`, `id="agents"`, `id="tasks"`, `id="roles"`} {
+		if strings.Contains(body, gone) {
+			t.Errorf("index still has %q", gone)
+		}
 	}
 }
 

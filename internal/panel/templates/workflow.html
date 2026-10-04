@@ -49,6 +49,21 @@
   </section>
   {{end}}
   <section>
+    <h2>Runs</h2>
+    {{if not .Runs}}<p class="muted">No runs yet.</p>{{end}}
+    <div class="cards">
+    {{range .Runs}}
+      <article class="card {{.Status}}">
+        <div class="card-head">
+          <a href="/runs/{{.ID}}">Run {{.ID}}</a>{{if .AgentID}} <a href="/agents/{{.AgentID}}">agent {{.AgentID}}</a>{{end}}
+          <span class="badge {{.Status}}">{{human .Status}}{{if and .Outcome (ne .Outcome "ok")}}: {{human .Outcome}}{{end}}</span>
+        </div>
+        <div class="meta">{{.Role}} · {{.Model}} · {{.Elapsed}}</div>
+      </article>
+    {{end}}
+    </div>
+  </section>
+  <section>
     <h2>New agent on this workflow</h2>
     <form class="summon" hx-post="/workflows/{{.ID}}/agent" hx-target="#flash" hx-swap="innerHTML">
       <div class="fields">

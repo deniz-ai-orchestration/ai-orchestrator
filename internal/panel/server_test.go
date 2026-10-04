@@ -145,23 +145,20 @@ func TestIndex(t *testing.T) {
 		t.Fatalf("status %d: %s", code, body)
 	}
 	for _, want := range []string{
-		`id="agents"`, `id="tasks"`, `id="roles"`, `id="quota"`, "Pause all",
-		"Run 1", "▸ Edit /tmp/orch-scratch/main.go", "■ success", // card preview
-		`title="o/r">#7</a>`, "developing", // task row
-		"codex-sol", "<td>ollama-local <span", // next models
-		`<option value="claude">claude</option>`,                                  // provider selector
-		`<option value="claude-opus" data-provider="claude" title="opus" hidden>`, // models of other providers hidden
-		`<option value="auto" data-provider="" selected>first available</option>`,
+		`id="projects"`, `id="quota"`, "Pause all",
+		"codex-sol", `<td title="qwen2.5-coder:7b-instruct">ollama-local</td>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("index lacks %q", want)
 		}
 	}
+	for _, gone := range []string{`id="agents"`, `id="tasks"`, `id="roles"`, "Run 1"} {
+		if strings.Contains(body, gone) {
+			t.Errorf("index still has %q", gone)
+		}
+	}
 	if !strings.Contains(h.Get("Content-Security-Policy"), "script-src 'self'") || h.Get("X-Frame-Options") != "DENY" {
 		t.Errorf("security headers %v", h)
-	}
-	if strings.Contains(body, "session started") {
-		t.Error("preview should keep only the last lines")
 	}
 }
 

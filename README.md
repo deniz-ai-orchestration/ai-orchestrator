@@ -35,11 +35,13 @@ agent), `/quota`, `/models`, `/use`, `/enable`, `/disable`, `/pause`,
 ## Control panel
 
 With `panel.enabled: true`, orch serves a control panel on `panel.listen`
-(PC2's LAN address; open it by IP, not by a DNS name). It shows one card per
-recent agent run with its last lines, the active tasks with Retry and Cancel,
-each role's provider and model selectors, fallback order and the model its next run would use, and each model's
-quota state with a switch. Pause all stops new runs from starting, and Stop
-ends a running agent (the task then waits for Retry). Each run has a live,
+(PC2's LAN address; open it by IP, not by a DNS name). The dashboard shows
+your projects as cards with workflow and agent badges, the new-project form
+(name, optional description, project directory), the pause switch and each
+model's quota state. A project page shows its summary, workflows, roles with
+each role's provider and model selectors, and the new-workflow form. A
+workflow page shows its developer chain and tester rounds, its own runs,
+the PR/CI card and its actions; an agent page is the chat with a live,
 view-only terminal of what the agent says and which tools it calls. The panel
 has no login: keep it on the LAN. Taking control of a terminal and
 needs-you pings come later.

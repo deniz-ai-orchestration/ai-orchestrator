@@ -19,11 +19,15 @@ type WorkflowRow struct {
 	Tests string // "round N" when it has testers
 }
 
-// ProjectPage is a project's workflow list and its new-workflow form.
+// ProjectPage is a project's summary, workflow list, roles and its
+// new-workflow form.
 type ProjectPage struct {
 	Project   ProjectRow
 	Workflows []WorkflowRow
 	Summon    *SummonForm
+	Roles     []RoleRow
+	Providers []string
+	Choices   []ModelChoice
 }
 
 // TesterGroup is one test round on the workflow page.
@@ -32,18 +36,22 @@ type TesterGroup struct {
 	Cards []AgentCard
 }
 
-// WorkflowPage is a workflow's agents, PR/CI state and actions.
+// WorkflowPage is a workflow's agents, runs, PR/CI state and actions.
 type WorkflowPage struct {
 	store.Workflow
 	Project    ProjectRow
 	Devs       []AgentCard
 	Testers    []TesterGroup
+	Runs       []Card
 	CanTest    bool
 	CanPR      bool
 	HasGit     bool
 	Draft      runner.PRDraft
 	Autonomous bool
 }
+
+// workflowRunLimit is how many of a workflow's runs its page shows.
+const workflowRunLimit = 12
 
 func (s *Server) projectFromQuery(w http.ResponseWriter, r *http.Request) (store.Project, bool) {
 	path := strings.TrimSpace(r.URL.Query().Get("path"))
@@ -73,7 +81,7 @@ func (s *Server) projectPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) project(ctx context.Context, p store.Project) (ProjectPage, error) {
-	page := ProjectPage{Project: ProjectRow{Project: p, Name: base(p.Path)}}
+	page := ProjectPage{Project: ProjectRow{Project: p}}
 	if counts, err := s.Store.ProjectCounts(ctx); err != nil {
 		return page, err
 	} else if c, ok := counts[p.Path]; ok {
@@ -109,6 +117,11 @@ func (s *Server) project(ctx context.Context, p store.Project) (ProjectPage, err
 		}
 		page.Summon = v.Summon
 	}
+	var rv View
+	if err := s.roles(ctx, &rv); err != nil {
+		return page, err
+	}
+	page.Roles, page.Providers, page.Choices = rv.Roles, rv.Providers, rv.Choices
 	return page, nil
 }
 
@@ -203,11 +216,22 @@ func (s *Server) workflow(ctx context.Context, wf store.Workflow) (WorkflowPage,
 	if err != nil {
 		return page, err
 	}
-	page.Project = ProjectRow{Project: p, Name: base(p.Path)}
+	page.Project = ProjectRow{Project: p}
 	page.HasGit, page.Autonomous = p.HasGit, p.Autonomous
 	as, err := s.Store.WorkflowAgents(ctx, wf.ID)
 	if err != nil {
 		return page, err
+	}
+	rs, err := s.Store.WorkflowRuns(ctx, wf.ID, workflowRunLimit)
+	if err != nil {
+		return page, err
+	}
+	for _, r := range rs {
+		c, err := s.card(ctx, r, false)
+		if err != nil {
+			return page, err
+		}
+		page.Runs = append(page.Runs, c)
 	}
 	byRound := map[int][]AgentCard{}
 	var rounds []int
