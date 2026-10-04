@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -22,11 +23,12 @@ import (
 
 // View is everything the page shows. Only the requested sections are filled.
 type View struct {
-	Paused bool
-	Agents []Card
-	Tasks  []TaskRow
-	Roles  []RoleRow
-	Models []ModelRow
+	Projects []ProjectRow
+	Paused   bool
+	Agents   []Card
+	Tasks    []TaskRow
+	Roles    []RoleRow
+	Models   []ModelRow
 	// Providers and Choices fill each role's provider and model selectors:
 	// providers that can run an agent, and their models.
 	Providers []string
@@ -88,6 +90,8 @@ func (s *Server) view(ctx context.Context, parts ...string) (View, error) {
 	}
 	for _, p := range parts {
 		switch p {
+		case "projects":
+			err = s.projects(ctx, &v)
 		case "agents":
 			err = s.agents(ctx, &v)
 		case "tasks":
@@ -337,6 +341,8 @@ func duration(d time.Duration) string {
 
 var funcs = template.FuncMap{
 	"human": func(s any) string { return strings.ReplaceAll(fmt.Sprint(s), "_", " ") },
+	"base":  func(path string) string { return filepath.Base(path) },
+	"query": url.QueryEscape,
 	"lineClass": func(l string) string {
 		switch {
 		case strings.HasPrefix(l, "▸"):

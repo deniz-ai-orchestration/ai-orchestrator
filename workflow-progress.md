@@ -14,43 +14,43 @@ findings under "Notes".
 
 ## M1 — store + migrations + tests
 
-- [ ] `00008_projects_workflows.sql` (`projects`, `workflows`, `agents.workflow_id`, `runs.workflow_id`)
-- [ ] Backfill existing agents into workflows
-- [ ] Store CRUD + grouping queries (`OpenWorkflows`, `WorkflowAgents`, `ProjectCounts`)
-- [ ] `go test -race ./internal/store/...` green
+- [x] `00008_projects_workflows.sql` (`projects`, `workflows`, `agents.workflow_id`, `runs.workflow_id`)
+- [x] Backfill existing agents into workflows
+- [x] Store CRUD + grouping queries (`OpenWorkflows`, `WorkflowAgents`, `ProjectCounts`)
+- [x] `go test -race ./internal/store/...` green
 
 ## M2 — trust + abs-path worktree
 
-- [ ] `Projects` supports trusted abs roots (replace subfolder-only logic)
-- [ ] `Resolve/Stat/List` + `.git` detect + origin parse
-- [ ] `POST /projects/trust` confirm screen
-- [ ] `Protect/AddWorktree/Dirty/RepoOf` on `project_path`
-- [ ] Config `projects.dir` -> `trusted_roots` (+ example config updated)
-- [ ] Non-git project forces `autonomous=0`, hides `Open PR`
+- [x] `Projects` supports trusted abs roots (replace subfolder-only logic)
+- [x] `Resolve/Stat/List` + `.git` detect + origin parse
+- [x] `POST /projects/trust` confirm screen
+- [x] `Protect/AddWorktree/Dirty/RepoOf` on `project_path`
+- [x] Config `projects.dir` -> `trusted_roots` (+ example config updated)
+- [x] Non-git project forces `autonomous=0`, hides `Open PR`
 
 ## M3 — workflow API
 
-- [ ] `SummonWorkflow` (creates workflow + branch + first dev + worktree)
-- [ ] `SummonAgent` (replacement / manual tester in same workflow)
-- [ ] Workflow-scoped `Send/Test/OpenPR/Close`
-- [ ] Tester-first only when PR already open
-- [ ] `go test -race ./internal/runner/...` green
+- [x] `SummonWorkflow` (creates workflow + branch + first dev + worktree)
+- [x] `SummonAgent` (replacement / manual tester in same workflow)
+- [x] Workflow-scoped `Send/Test/OpenPR/Close`
+- [x] Tester-first only when PR already open
+- [x] `go test -race ./internal/runner/...` green
 
 ## M4 — panel hierarchy
 
-- [ ] `GET /` dashboard: project sidebar + badges, no terminals
-- [ ] `GET /projects/<id>`: workflow list + new-workflow form + autonomous switch
-- [ ] `GET /workflows/<id>`: agents by round + PR/CI card + actions
-- [ ] `GET /agents/<id>`: breadcrumb back to workflow
-- [ ] `View` loaders + routes wired
+- [x] `GET /` dashboard: project sidebar + badges, no terminals
+- [x] `GET /projects/<id>`: workflow list + new-workflow form + autonomous switch
+- [x] `GET /workflows/<id>`: agents by round + PR/CI card + actions
+- [x] `GET /agents/<id>`: breadcrumb back to workflow
+- [x] `View` loaders + routes wired
 
 ## M5 — autonomous CI loop + parallel test
 
-- [ ] CI polling for workflow heads
-- [ ] Autonomous ON e2e: dev -> test -> PR -> CI -> review -> fix (bounded by limits)
-- [ ] Monorepo parallel test: 2 workflows, same repo, different branches
-- [ ] Stop-dev + summon-new-dev continues same branch
-- [ ] Full CI green (`gofmt`, `vet`, `test -race`, `build`, `check-config`)
+- [x] CI polling for workflow heads
+- [x] Autonomous ON e2e: dev -> test -> PR -> CI -> review -> fix (bounded by limits)
+- [x] Monorepo parallel test: 2 workflows, same repo, different branches
+- [x] Stop-dev + summon-new-dev continues same branch
+- [x] Full CI green (`gofmt`, `vet`, `test -race`, `build`, `check-config`)
 
 ## Deferred (do NOT do in this job)
 
@@ -58,6 +58,16 @@ findings under "Notes".
 - [ ] Planner role, auto compact/clear
 
 ## Notes (PC2 findings, append here)
+
+- 2026-10-04 (PC2, M1→M5 implementation): the dashboard keeps its existing
+  Runs/Tasks/Roles/Quota sections (TestIndex requires them) and gains the
+  projects sidebar; the project page lives at `GET /project?path=` (an
+  absolute path cannot be a URL segment) rather than `GET /projects/<id>`.
+  Two races fixed along the way: `fail()` now uses the atomic
+  `SetAgentStateUnlessClosed`, so a turn ending after its agent was closed
+  no longer flips it back to failed; the clean-round settle pushes a fix
+  round's new commits, otherwise red CI would wait on an already-judged
+  head forever.
 
 - 2026-10-04 (PC2): repo clean on `main` @ 6ac8140, in sync with origin. The PR #19
   CI failure was a flake, unrelated to the PR's content (it only added these two

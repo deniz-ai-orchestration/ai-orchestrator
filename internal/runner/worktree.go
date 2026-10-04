@@ -4,59 +4,222 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/deniz-ai-orchestration/ai-orchestrator/internal/store"
 )
 
-// Projects are the git repositories under one folder on PC2 that summoned
-// agents work on. Each agent gets its own git worktree, so parallel agents
-// never edit each other's files.
+// Projects are the directories on PC2 that summoned agents work on. Each
+// agent gets its own git worktree, so parallel agents never edit each
+// other's files.
+//
+// A project is named either by its folder under Dir (the legacy form, what
+// agents summoned before workflows store) or by a free absolute path
+// inside one of the TrustedRoots. Per-project trust lives in the store's
+// projects table and is granted from the panel; the roots here are the
+// outer boundary: orch never resolves a path outside them.
 type Projects struct {
-	Dir string
+	Dir          string
+	TrustedRoots []string
+	Store        *store.Store
 }
 
 // projectName is a folder directly under Dir: no path separators, no
 // leading dot.
 var projectName = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._-]{0,99}$`)
 
-// ErrNoProjects means projects.dir is not set.
-var ErrNoProjects = errors.New("projects.dir is not set in the config")
+// ErrNoProjects means no project root is set.
+var ErrNoProjects = errors.New("projects.dir or projects.trusted_roots is not set in the config")
 
-// List returns the folders under Dir that are git repositories.
-func (p Projects) List() ([]string, error) {
-	if p.Dir == "" {
-		return nil, ErrNoProjects
-	}
-	entries, err := os.ReadDir(p.Dir)
-	if err != nil {
-		return nil, err
-	}
+// roots are the trusted roots, cleaned and deduped, Dir first.
+func (p Projects) roots() []string {
 	var out []string
-	for _, e := range entries {
-		if !e.IsDir() || !projectName.MatchString(e.Name()) {
+	seen := map[string]bool{}
+	for _, r := range append([]string{p.Dir}, p.TrustedRoots...) {
+		if r == "" {
 			continue
 		}
-		if fi, err := os.Stat(filepath.Join(p.Dir, e.Name(), ".git")); err == nil && fi.IsDir() {
-			out = append(out, e.Name())
+		r = filepath.Clean(r)
+		if !filepath.IsAbs(r) || seen[r] {
+			continue
+		}
+		seen[r] = true
+		out = append(out, r)
+	}
+	return out
+}
+
+// Resolve turns a project (a legacy folder name under Dir, "~/..." or an
+// absolute path) into a clean absolute directory inside a trusted root.
+// It does not look at the filesystem.
+func (p Projects) Resolve(project string) (string, error) {
+	roots := p.roots()
+	if len(roots) == 0 {
+		return "", ErrNoProjects
+	}
+	target := strings.TrimSpace(project)
+	if target == "" {
+		return "", errors.New("no project path")
+	}
+	if target != "~" && !strings.ContainsAny(target, `/\`) {
+		// A legacy folder name under projects.dir.
+		if !projectName.MatchString(target) {
+			return "", fmt.Errorf("%q is not a project folder name", target)
+		}
+		if p.Dir == "" {
+			return "", ErrNoProjects
+		}
+		target = filepath.Join(p.Dir, target)
+	}
+	if target == "~" || strings.HasPrefix(target, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		target = filepath.Join(home, strings.TrimPrefix(target, "~"))
+	}
+	if !filepath.IsAbs(target) {
+		return "", fmt.Errorf("%q is not a project folder name or absolute path", project)
+	}
+	target = filepath.Clean(target)
+	resolved, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		return "", err
+	}
+	for _, r := range roots {
+		root, err := filepath.EvalSymlinks(r)
+		if err != nil {
+			continue
+		}
+		rel, err := filepath.Rel(root, resolved)
+		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return resolved, nil
+		}
+	}
+	return "", fmt.Errorf("%s is outside the trusted project roots", target)
+}
+
+// maxTrustFiles caps how many files a trust prompt counts.
+const maxTrustFiles = 10000
+
+// ProjectInfo is what the trust prompt shows about a directory.
+type ProjectInfo struct {
+	Path   string // resolved, absolute
+	HasGit bool   // .git is a directory: orch can make worktrees of it
+	Repo   string // owner/name of a GitHub origin, "" when there is none
+	Files  int    // files counted, up to maxTrustFiles
+	Capped bool   // counting stopped at maxTrustFiles
+}
+
+// Stat inspects a project directory for the trust prompt: is it a git
+// repository, where does its origin point, how big is it. A linked
+// worktree (.git is a file) counts as no git: orch's own worktrees and
+// its protected .git mounts need a real repository directory.
+func (p Projects) Stat(ctx context.Context, project string) (ProjectInfo, error) {
+	dir, err := p.Resolve(project)
+	if err != nil {
+		return ProjectInfo{}, err
+	}
+	fi, err := os.Stat(dir)
+	if err != nil {
+		return ProjectInfo{}, err
+	}
+	if !fi.IsDir() {
+		return ProjectInfo{}, fmt.Errorf("%s is not a directory", dir)
+	}
+	info := ProjectInfo{Path: dir}
+	if g, err := os.Stat(filepath.Join(dir, ".git")); err == nil && g.IsDir() {
+		info.HasGit = true
+		if url, err := repoGit(ctx, dir, "remote", "get-url", "origin"); err == nil {
+			if m := githubRepo.FindStringSubmatch(url); m != nil {
+				info.Repo = m[1]
+			}
+		}
+	}
+	_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil // an unreadable corner simply does not count
+		}
+		if d.IsDir() {
+			if d.Name() == ".git" && path != dir {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		info.Files++
+		if info.Files >= maxTrustFiles {
+			info.Capped = true
+			return fs.SkipAll
+		}
+		return nil
+	})
+	return info, nil
+}
+
+// List returns the projects the summon form offers: the git repositories
+// directly under each root. Folders under the legacy Dir are returned as
+// names (what agents summoned from them store), folders under the other
+// roots as absolute paths; a folder listed both ways appears once, as a
+// name.
+func (p Projects) List() ([]string, error) {
+	roots := p.roots()
+	if len(roots) == 0 {
+		return nil, ErrNoProjects
+	}
+	var out []string
+	seen := map[string]bool{}
+	for _, r := range roots {
+		entries, err := os.ReadDir(r)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue // a root that is not there offers no projects
+			}
+			return nil, err
+		}
+		legacy := p.Dir != "" && r == filepath.Clean(p.Dir)
+		for _, e := range entries {
+			if !e.IsDir() || !projectName.MatchString(e.Name()) {
+				continue
+			}
+			sub := filepath.Join(r, e.Name())
+			if fi, err := os.Stat(filepath.Join(sub, ".git")); err != nil || !fi.IsDir() {
+				continue
+			}
+			if seen[sub] {
+				continue
+			}
+			seen[sub] = true
+			if legacy {
+				out = append(out, e.Name())
+			} else {
+				out = append(out, sub)
+			}
 		}
 	}
 	sort.Strings(out)
 	return out, nil
 }
 
-// Path returns a project's folder after checking the name.
-func (p Projects) Path(name string) (string, error) {
-	if p.Dir == "" {
-		return "", ErrNoProjects
+// Path resolves a project and requires a git repository there: every
+// worktree and git command orch runs for an agent needs one. A chat-only
+// project (no git) is resolved with Resolve instead.
+func (p Projects) Path(project string) (string, error) {
+	dir, err := p.Resolve(project)
+	if err != nil {
+		return "", err
 	}
-	if !projectName.MatchString(name) {
-		return "", fmt.Errorf("%q is not a project folder name", name)
+	if p.Store != nil {
+		pr, err := p.Store.GetProject(context.Background(), dir)
+		if err != nil || !pr.Trusted {
+			return "", fmt.Errorf("trust %s in the panel first", dir)
+		}
 	}
-	dir := filepath.Join(p.Dir, name)
 	if fi, err := os.Stat(filepath.Join(dir, ".git")); err != nil || !fi.IsDir() {
 		return "", fmt.Errorf("%s is not a git repository", dir)
 	}

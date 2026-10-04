@@ -105,6 +105,19 @@ func (s *Server) Handler() (http.Handler, error) {
 	mux.HandleFunc("GET /runs/{id}", s.runPage)
 	mux.HandleFunc("GET /runs/{id}/stream", s.stream)
 	mux.HandleFunc("POST /agents", s.summon)
+	mux.HandleFunc("POST /projects/inspect", s.inspectProject)
+	mux.HandleFunc("POST /projects/trust", s.trustProject)
+	mux.HandleFunc("POST /projects/autonomous", s.switchAutonomous)
+	mux.HandleFunc("GET /project", s.projectPage)
+	mux.HandleFunc("POST /workflows", s.newWorkflow)
+	mux.HandleFunc("GET /workflows/{id}", s.workflowPage)
+	mux.HandleFunc("GET /workflows/{id}/parts/{name}", s.workflowPart)
+	mux.HandleFunc("POST /workflows/{id}/agent", s.workflowAgent)
+	mux.HandleFunc("POST /workflows/{id}/send", s.sendWorkflow)
+	mux.HandleFunc("POST /workflows/{id}/test", s.testWorkflow)
+	mux.HandleFunc("POST /workflows/{id}/pr", s.openWorkflowPR)
+	mux.HandleFunc("POST /workflows/{id}/stop", s.stopWorkflow)
+	mux.HandleFunc("POST /workflows/{id}/close", s.closeWorkflow)
 	mux.HandleFunc("GET /agents/{id}", s.agentPage)
 	mux.HandleFunc("GET /agents/{id}/parts/{name}", s.agentPart)
 	mux.HandleFunc("POST /agents/{id}/send", s.send)
@@ -170,7 +183,7 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 }
 
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
-	v, err := s.view(r.Context(), "summon", "chats", "agents", "tasks", "roles", "quota")
+	v, err := s.view(r.Context(), "projects", "summon", "chats", "agents", "tasks", "roles", "quota")
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -181,7 +194,7 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 func (s *Server) part(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	switch name {
-	case "chats", "agents", "tasks", "roles", "quota", "pause":
+	case "projects", "chats", "agents", "tasks", "roles", "quota", "pause":
 	default:
 		http.NotFound(w, r)
 		return

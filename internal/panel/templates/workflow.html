@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="htmx-config" content='{"allowEval":false,"includeIndicatorStyles":false,"historyEnabled":false}'>
+<title>orch · workflow {{.ID}}</title>
+<link rel="stylesheet" href="/static/panel.css">
+<script src="/static/vendor/htmx.min.js"></script>
+<script src="/static/panel.js"></script>
+</head>
+<body>
+<header>
+  <h1><a href="/">orch</a> · <a href="/project?path={{.Project.Path | query}}">{{.Project.Name}}</a> · workflow {{.ID}}</h1>
+  {{template "workflow-head" .}}
+  <div id="flash" aria-live="polite"></div>
+</header>
+<main>
+  <section>
+    <h2>Developers</h2>
+    <div class="cards">
+    {{range .Devs}}
+      <article class="card {{.State}}">
+        <div class="card-head">
+          <a href="/agents/{{.ID}}">Agent {{.ID}} · {{human .Role}}</a>
+          <span class="badge {{.State}}">{{human .State}}</span>
+        </div>
+        <div class="meta">{{.Model}}{{if .Since}} · {{.Since}} ago{{end}}</div>
+        {{if .Last}}<p class="last">{{.Last}}</p>{{end}}
+      </article>
+    {{end}}
+    </div>
+  </section>
+  {{range .Testers}}
+  <section>
+    <h2>Testers · round {{.Round}}</h2>
+    <div class="cards">
+    {{range .Cards}}
+      <article class="card {{.State}}">
+        <div class="card-head">
+          <a href="/agents/{{.ID}}">Agent {{.ID}} · {{human .Role}}</a>
+          <span class="badge {{.State}}">{{human .State}}</span>
+        </div>
+        <div class="meta">{{.Model}}{{if .Since}} · {{.Since}} ago{{end}}</div>
+        {{if .Last}}<p class="last">{{.Last}}</p>{{end}}
+      </article>
+    {{end}}
+    </div>
+  </section>
+  {{end}}
+  <section>
+    <h2>New agent on this workflow</h2>
+    <form class="summon" hx-post="/workflows/{{.ID}}/agent" hx-target="#flash" hx-swap="innerHTML">
+      <div class="fields">
+        <label>Role
+          <select name="role">
+            <option value="developer">developer</option>
+            <option value="functional_tester">functional tester</option>
+            <option value="reviewer">reviewer</option>
+          </select>
+        </label>
+        <label>Model <input name="model" value="{{.Model}}" required autocomplete="off" spellcheck="false"></label>
+      </div>
+      <textarea name="message" rows="3" placeholder="Empty continues the workflow's task"></textarea>
+      <div class="fields"><button>Summon</button></div>
+    </form>
+  </section>
+  <section>
+    <h2>Message the developer</h2>
+    <form class="send" hx-post="/workflows/{{.ID}}/send" hx-encoding="multipart/form-data" hx-target="#flash" hx-swap="innerHTML">
+      <textarea name="message" rows="3" required placeholder="Message the workflow's developer"></textarea>
+      <div class="fields">
+        <label>Files <input type="file" name="files" multiple></label>
+        <button>Send</button>
+      </div>
+    </form>
+  </section>
+</main>
+</body>
+</html>
+
+{{define "workflow-head"}}
+<div id="workflow-head" hx-get="/workflows/{{.ID}}/parts/workflow-head" hx-trigger="every 3s, refresh from:body" hx-swap="outerHTML">
+  <span class="badge {{.State}}">{{human .State}}</span>
+  <span class="meta">{{.Title}} · {{.Branch}}{{if .Round}} · round {{.Round}}{{end}}</span>
+  {{if .PRURL}}<a class="pr" href="{{.PRURL}}" target="_blank" rel="noopener">PR #{{.PRNumber}}</a>{{if .CIState}} <span class="badge ci-{{.CIState}}">CI {{.CIState}}</span>{{end}}{{end}}
+  <div class="actions">
+  {{if .CanTest}}
+  <form hx-post="/workflows/{{.ID}}/test" hx-target="#flash" hx-swap="innerHTML"><button>Send to testers</button></form>
+  {{end}}
+  {{if .CanPR}}
+  {{if .PRNumber}}
+  <form hx-post="/workflows/{{.ID}}/pr" hx-target="#flash" hx-swap="innerHTML"><button>Push to PR #{{.PRNumber}}</button></form>
+  {{else}}
+  <details class="pr-form">
+    <summary>Open PR</summary>
+    <form hx-post="/workflows/{{.ID}}/pr" hx-target="#flash" hx-swap="innerHTML">
+      <label>Title <input name="title" value="{{.Draft.Title}}" required maxlength="200"></label>
+      <label>Description <textarea name="body" rows="10">{{.Draft.Body}}</textarea></label>
+      <button>Open PR</button>
+    </form>
+  </details>
+  {{end}}
+  {{end}}
+  {{if ne .State "closed"}}
+  <form hx-post="/workflows/{{.ID}}/stop" hx-target="#flash" hx-swap="innerHTML"><button class="danger">Stop</button></form>
+  <form hx-post="/workflows/{{.ID}}/close" hx-target="#flash" hx-swap="innerHTML" hx-confirm="Close this workflow? Its checkout is removed; branch {{.Branch}} stays."><button class="danger">Close workflow</button></form>
+  {{end}}
+  </div>
+</div>
+{{end}}

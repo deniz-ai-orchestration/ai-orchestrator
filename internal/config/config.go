@@ -64,9 +64,14 @@ type Panel struct {
 // Projects says where the project folders agents work on live.
 type Projects struct {
 	// Dir holds one git repository per project (for example ~/projects).
-	// Each summoned agent gets a git worktree of one of them. Empty means
-	// agents cannot be summoned.
+	// It is the legacy form of TrustedRoots: a folder in it can still be
+	// named by itself ("shop") instead of its full path. Empty means agents
+	// cannot be summoned.
 	Dir string `yaml:"dir"`
+	// TrustedRoots are the directories a free project path may live in.
+	// Each project inside them still needs your trust from the panel
+	// before orch spawns anything in it.
+	TrustedRoots []string `yaml:"trusted_roots"`
 }
 
 // Runner configures the throwaway agent containers.
@@ -165,6 +170,9 @@ func (c *Config) applyDefaults() {
 	c.DataDir = expandHome(c.DataDir, home)
 	c.SecretsDir = expandHome(c.SecretsDir, home)
 	c.Projects.Dir = expandHome(c.Projects.Dir, home)
+	for i, r := range c.Projects.TrustedRoots {
+		c.Projects.TrustedRoots[i] = expandHome(r, home)
+	}
 	if c.GitHub.Trigger == "" {
 		c.GitHub.Trigger = "agent:ready"
 	}
@@ -222,6 +230,11 @@ func (c *Config) Validate() error {
 
 	if c.Projects.Dir != "" && !filepath.IsAbs(c.Projects.Dir) {
 		add("projects.dir %q must be an absolute path or start with ~/", c.Projects.Dir)
+	}
+	for _, r := range c.Projects.TrustedRoots {
+		if !filepath.IsAbs(r) {
+			add("projects.trusted_roots: %q must be an absolute path or start with ~/", r)
+		}
 	}
 
 	if c.Runner.GitName == "" || c.Runner.GitEmail == "" {

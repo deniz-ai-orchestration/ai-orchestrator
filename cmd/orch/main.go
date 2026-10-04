@@ -157,7 +157,7 @@ func serve(ctx context.Context, cfg *config.Config, logOut io.Writer) error {
 	follower := &ci.Follower{Store: st, GH: gh, Helper: helper.FromConfig(cfg), Cfg: cfg,
 		Interval: cfg.GitHub.PollInterval, Log: log.With("component", "ci")}
 	chats := &runner.Chats{Store: st, Cfg: cfg, Containers: runner.Docker{},
-		Projects: runner.Projects{Dir: cfg.Projects.Dir},
+		Projects: runner.Projects{Dir: cfg.Projects.Dir, TrustedRoots: cfg.Projects.TrustedRoots, Store: st},
 		Dir:      filepath.Join(cfg.DataDir, "agents"), RunsDir: agents.RunsDir, User: agents.User,
 		Quota: agents.Quota, Log: log.With("component", "chats"),
 		Publisher: func() (runner.PRClient, string, error) {
@@ -191,7 +191,9 @@ func serve(ctx context.Context, cfg *config.Config, logOut io.Writer) error {
 	} else {
 		bot.API = telegram.LogAPI{Log: bot.Log}
 	}
-	loops := []func(context.Context) error{p.Run, labels.Run, agents.Run, follower.Run, runBot, chats.Run}
+	workflows := &runner.Workflows{Store: st, GH: gh, Helper: helper.FromConfig(cfg), Cfg: cfg, Chats: chats,
+		Interval: cfg.GitHub.PollInterval, Log: log.With("component", "workflows")}
+	loops := []func(context.Context) error{p.Run, labels.Run, agents.Run, follower.Run, runBot, chats.Run, workflows.Run}
 	if cfg.Panel.Enabled {
 		ui := &panel.Server{Store: st, Cfg: cfg, Quota: tracker, Agents: agents, Chats: chats, Log: log.With("component", "panel"),
 			Commands: &telegram.Bot{Store: st, Cfg: cfg, Quota: tracker, Agents: agents, Source: "the panel"}}

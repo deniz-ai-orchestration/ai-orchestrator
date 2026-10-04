@@ -418,3 +418,35 @@ func gitOut(t *testing.T, dir string, args ...string) string {
 	}
 	return out
 }
+
+func TestLateTurnFailureKeepsClosedAgentClosed(t *testing.T) {
+	e := newChatEnv(t)
+	ctx := context.Background()
+	a, err := e.chats.Summon(ctx, Summon{Role: "developer", Model: "sonnet", Project: "shop", Message: "Quick task"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a = e.settle(t, a.ID)
+	if a.State == store.AgentClosed {
+		t.Fatalf("state %s", a.State)
+	}
+	// You close the agent; a turn tail that fails afterwards (for example
+	// startTests on the removed worktree) must not flip it back to failed.
+	if err := e.chats.Close(ctx, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	e.chats.fail(context.Background(), a.ID, "The turn could not run: boom")
+	if got, _ := e.st.GetAgent(ctx, a.ID); got.State != store.AgentClosed {
+		t.Fatalf("state %s", got.State)
+	}
+	// ...while a still-open agent is marked failed as before.
+	b, err := e.chats.Summon(ctx, Summon{Role: "developer", Model: "sonnet", Project: "shop", Message: "Other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b = e.settle(t, b.ID)
+	e.chats.fail(context.Background(), b.ID, "boom")
+	if got, _ := e.st.GetAgent(ctx, b.ID); got.State != store.AgentFailed {
+		t.Fatalf("state %s", got.State)
+	}
+}

@@ -46,8 +46,11 @@ type Agent struct {
 	Round     int   // a developer's test rounds; a tester's round
 	PRNumber  int   // the pull request orch opened for the branch
 	PRURL     string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	// WorkflowID is the workflow the agent works in; 0 for agents summoned
+	// before workflows existed.
+	WorkflowID int64
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 // Message is one entry in an agent's conversation.
@@ -67,10 +70,10 @@ func (s *Store) CreateAgent(ctx context.Context, a Agent) (Agent, error) {
 	now := s.now()
 	a.State, a.CreatedAt, a.UpdatedAt = AgentWorking, now, now
 	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO agents (role, provider, model, project, branch, base, workspace, session, state, parent_id, round, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO agents (role, provider, model, project, branch, base, workspace, session, state, parent_id, round, workflow_id, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		a.Role, a.Provider, a.Model, a.Project, a.Branch, a.Base, a.Workspace, a.Session, a.State, nullID(a.ParentID), a.Round,
-		fmtTime(now), fmtTime(now))
+		nullID(a.WorkflowID), fmtTime(now), fmtTime(now))
 	if err != nil {
 		return a, err
 	}
@@ -93,6 +96,28 @@ func (s *Store) SetAgentSession(ctx context.Context, id int64, session string) e
 // SetAgentState moves an agent to state.
 func (s *Store) SetAgentState(ctx context.Context, id int64, state string) error {
 	return s.exec1(ctx, `UPDATE agents SET state = ?, updated_at = ? WHERE id = ?`, state, fmtTime(s.now()), id)
+}
+
+// SetAgentStateUnlessClosed moves an agent to state unless it is closed,
+// and reports whether it was already closed. The check and the write are
+// one statement, so a late turn failure cannot flip a concurrent Close.
+func (s *Store) SetAgentStateUnlessClosed(ctx context.Context, id int64, state string) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE agents SET state = ?, updated_at = ? WHERE id = ? AND state != ?`,
+		state, fmtTime(s.now()), id, AgentClosed)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if n == 1 {
+		return false, nil
+	}
+	if _, err := s.GetAgent(ctx, id); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // SetAgentStateIf moves an agent from one state to another and reports
@@ -149,7 +174,7 @@ func (s *Store) InterruptAgents(ctx context.Context) ([]int64, error) {
 	return ids, rows.Err()
 }
 
-const agentCols = `id, role, provider, model, project, branch, base, workspace, session, state, parent_id, round, pr_number, pr_url, created_at, updated_at`
+const agentCols = `id, role, provider, model, project, branch, base, workspace, session, state, parent_id, round, pr_number, pr_url, workflow_id, created_at, updated_at`
 
 // GetAgent returns one agent, or ErrNotFound.
 func (s *Store) GetAgent(ctx context.Context, id int64) (Agent, error) {
@@ -188,12 +213,13 @@ func (s *Store) queryAgents(ctx context.Context, q string, args ...any) ([]Agent
 	for rows.Next() {
 		var a Agent
 		var created, updated string
-		var parent sql.NullInt64
+		var parent, workflow sql.NullInt64
 		if err := rows.Scan(&a.ID, &a.Role, &a.Provider, &a.Model, &a.Project, &a.Branch, &a.Base, &a.Workspace,
-			&a.Session, &a.State, &parent, &a.Round, &a.PRNumber, &a.PRURL, &created, &updated); err != nil {
+			&a.Session, &a.State, &parent, &a.Round, &a.PRNumber, &a.PRURL, &workflow, &created, &updated); err != nil {
 			return nil, err
 		}
 		a.ParentID = parent.Int64
+		a.WorkflowID = workflow.Int64
 		a.CreatedAt, _ = parseTime(created)
 		a.UpdatedAt, _ = parseTime(updated)
 		out = append(out, a)
