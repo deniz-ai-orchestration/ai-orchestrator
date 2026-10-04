@@ -147,6 +147,15 @@ func (c *Chats) summonWorkflowAgent(ctx context.Context, w store.Workflow, role,
 	if role != "developer" && len(as) == 0 && w.PRNumber == 0 {
 		return zero, errors.New("start with a developer; tester-first requires an open PR")
 	}
+	if role == "developer" {
+		fresh, err := c.Store.GetWorkflow(ctx, w.ID)
+		if err != nil {
+			return zero, err
+		}
+		if fresh.DevRuns >= c.Cfg.Limits.DevRuns {
+			return zero, fmt.Errorf("the workflow used its %d developer runs; close it or raise limits.dev_runs", fresh.DevRuns)
+		}
+	}
 	for _, old := range as {
 		if old.Role == "developer" && old.State != store.AgentClosed {
 			if err := c.Store.SetAgentState(ctx, old.ID, store.AgentClosed); err != nil {
@@ -285,6 +294,96 @@ func (c *Chats) openWorkflowPR(ctx context.Context, id int64, d PRDraft) (int, s
 	}
 	err = c.Store.SetWorkflowPhase(ctx, id, "awaiting_ci")
 	return n, url, created, err
+}
+
+// AutoTest runs the testers for a workflow developer outside a turn. It
+// reports false when the workflow is busy: poll again later.
+func (c *Chats) AutoTest(ctx context.Context, devID int64) (bool, error) {
+	dev, err := c.Store.GetAgent(ctx, devID)
+	if err != nil {
+		return true, err
+	}
+	switch dev.State {
+	case store.AgentWorking, store.AgentTesting:
+		return false, nil
+	case store.AgentClosed:
+		return true, nil
+	}
+	return true, c.startTests(ctx, devID, false)
+}
+
+// AutoFixCI summons a replacement developer carrying the CI failure
+// summary. Past the CI-attempt or dev-run limits the workflow waits for
+// you instead. It reports false when the workflow is busy.
+func (c *Chats) AutoFixCI(ctx context.Context, id int64, head, summary string) (bool, error) {
+	c.workflowMu.Lock()
+	defer c.workflowMu.Unlock()
+	w, err := c.Store.GetWorkflow(ctx, id)
+	if err != nil {
+		return true, err
+	}
+	if w.State == store.WorkflowClosed {
+		return true, nil
+	}
+	if err := c.workflowIdle(ctx, w); err != nil {
+		return false, nil
+	}
+	fresh, err := c.Store.GetWorkflow(ctx, id)
+	if err != nil {
+		return true, err
+	}
+	dev := latestWorkflowDev(ctx, c, id)
+	held := func(note string) (bool, error) {
+		if dev != nil {
+			if err := c.devNote(ctx, dev.ID, note, store.AgentNeedsYou); err != nil {
+				return true, err
+			}
+		}
+		if err := c.Store.SetWorkflowPhase(ctx, id, "needs_you"); err != nil {
+			return true, err
+		}
+		return true, nil
+	}
+	if fresh.CIAttempts >= c.Cfg.Limits.CIAttempts {
+		return held(fmt.Sprintf("CI failed on commit %s %d times, the CI-attempt limit. Look at the summary, then summon the next agent from the workflow page.",
+			short(head), fresh.CIAttempts))
+	}
+	if fresh.DevRuns >= c.Cfg.Limits.DevRuns {
+		return held(fmt.Sprintf("The workflow used its %d developer runs. Look at the CI summary, then summon the next agent from the workflow page.", fresh.DevRuns))
+	}
+	if _, err := c.Store.BumpWorkflowCIAttempt(ctx, id); err != nil {
+		return true, err
+	}
+	msg := fmt.Sprintf("CI failed on commit %s:\n\n%s\n\nFix it on this branch. Original task:\n%s", short(head), summary, w.Prompt)
+	if _, err := c.summonWorkflowAgent(ctx, w, "developer", w.Model, msg, nil); err != nil {
+		return true, err
+	}
+	return true, nil
+}
+
+// AutoCloseWorkflow closes a workflow whose pull request was merged. It
+// reports false when the workflow is busy: poll again later.
+func (c *Chats) AutoCloseWorkflow(ctx context.Context, id int64) (bool, error) {
+	err := c.CloseWorkflow(ctx, id)
+	if errors.Is(err, ErrBusy) {
+		return false, nil
+	}
+	return true, err
+}
+
+// latestWorkflowDev returns a workflow's newest developer, if it has one.
+func latestWorkflowDev(ctx context.Context, c *Chats, id int64) *store.Agent {
+	as, err := c.Store.WorkflowAgents(ctx, id)
+	if err != nil {
+		return nil
+	}
+	for i := len(as) - 1; i >= 0; i-- {
+		if as[i].Role == "developer" {
+			a := as[i]
+			return &a
+		}
+	}
+	return nil
 }
 
 func (c *Chats) StopWorkflow(ctx context.Context, id int64) error {

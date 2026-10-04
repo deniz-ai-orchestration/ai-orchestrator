@@ -46,11 +46,11 @@ findings under "Notes".
 
 ## M5 — autonomous CI loop + parallel test
 
-- [ ] CI polling for workflow heads
-- [ ] Autonomous ON e2e: dev -> test -> PR -> CI -> review -> fix (bounded by limits)
-- [ ] Monorepo parallel test: 2 workflows, same repo, different branches
-- [ ] Stop-dev + summon-new-dev continues same branch
-- [ ] Full CI green (`gofmt`, `vet`, `test -race`, `build`, `check-config`)
+- [x] CI polling for workflow heads
+- [x] Autonomous ON e2e: dev -> test -> PR -> CI -> review -> fix (bounded by limits)
+- [x] Monorepo parallel test: 2 workflows, same repo, different branches
+- [x] Stop-dev + summon-new-dev continues same branch
+- [x] Full CI green (`gofmt`, `vet`, `test -race`, `build`, `check-config`)
 
 ## Deferred (do NOT do in this job)
 
@@ -58,6 +58,16 @@ findings under "Notes".
 - [ ] Planner role, auto compact/clear
 
 ## Notes (PC2 findings, append here)
+
+- 2026-10-04 (PC2, M1→M5 implementation): the dashboard keeps its existing
+  Runs/Tasks/Roles/Quota sections (TestIndex requires them) and gains the
+  projects sidebar; the project page lives at `GET /project?path=` (an
+  absolute path cannot be a URL segment) rather than `GET /projects/<id>`.
+  Two races fixed along the way: `fail()` now uses the atomic
+  `SetAgentStateUnlessClosed`, so a turn ending after its agent was closed
+  no longer flips it back to failed; the clean-round settle pushes a fix
+  round's new commits, otherwise red CI would wait on an already-judged
+  head forever.
 
 - 2026-10-04 (PC2): repo clean on `main` @ 6ac8140, in sync with origin. The PR #19
   CI failure was a flake, unrelated to the PR's content (it only added these two

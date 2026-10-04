@@ -566,10 +566,27 @@ func (c *Chats) turn(ctx context.Context, id int64) error {
 	if err := c.Store.SetAgentState(bg, id, store.AgentDone); err != nil {
 		return err
 	}
-	if a.Role == "developer" && a.WorkflowID == 0 {
-		return c.startTests(bg, id, false)
+	if a.Role == "developer" {
+		if a.WorkflowID == 0 {
+			return c.startTests(bg, id, false)
+		}
+		return c.autoTest(bg, id)
 	}
 	return nil
+}
+
+// autoTest starts the testers after an autonomous workflow developer
+// finishes a turn. Manual workflows wait for Send to testers instead.
+func (c *Chats) autoTest(ctx context.Context, id int64) error {
+	a, err := c.Store.GetAgent(ctx, id)
+	if err != nil {
+		return err
+	}
+	auto, _, err := c.autonomous(ctx, a)
+	if err != nil || !auto {
+		return err
+	}
+	return c.startTests(ctx, id, false)
 }
 
 // afterTurn settles a tester's round once a tester's turn has ended in any

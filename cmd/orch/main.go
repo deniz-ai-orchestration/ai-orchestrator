@@ -191,7 +191,9 @@ func serve(ctx context.Context, cfg *config.Config, logOut io.Writer) error {
 	} else {
 		bot.API = telegram.LogAPI{Log: bot.Log}
 	}
-	loops := []func(context.Context) error{p.Run, labels.Run, agents.Run, follower.Run, runBot, chats.Run}
+	workflows := &runner.Workflows{Store: st, GH: gh, Helper: helper.FromConfig(cfg), Cfg: cfg, Chats: chats,
+		Interval: cfg.GitHub.PollInterval, Log: log.With("component", "workflows")}
+	loops := []func(context.Context) error{p.Run, labels.Run, agents.Run, follower.Run, runBot, chats.Run, workflows.Run}
 	if cfg.Panel.Enabled {
 		ui := &panel.Server{Store: st, Cfg: cfg, Quota: tracker, Agents: agents, Chats: chats, Log: log.With("component", "panel"),
 			Commands: &telegram.Bot{Store: st, Cfg: cfg, Quota: tracker, Agents: agents, Source: "the panel"}}
