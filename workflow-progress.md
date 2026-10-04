@@ -26,7 +26,7 @@ findings under "Notes".
 - [x] `POST /projects/trust` confirm screen
 - [x] `Protect/AddWorktree/Dirty/RepoOf` on `project_path`
 - [x] Config `projects.dir` -> `trusted_roots` (+ example config updated)
-- [ ] Non-git project forces `autonomous=0`, hides `Open PR`
+- [x] Non-git project forces `autonomous=0`, hides `Open PR`
 
 ## M3 — workflow API
 
@@ -38,11 +38,11 @@ findings under "Notes".
 
 ## M4 — panel hierarchy
 
-- [ ] `GET /` dashboard: project sidebar + badges, no terminals
-- [ ] `GET /projects/<id>`: workflow list + new-workflow form + autonomous switch
-- [ ] `GET /workflows/<id>`: agents by round + PR/CI card + actions
-- [ ] `GET /agents/<id>`: breadcrumb back to workflow
-- [ ] `View` loaders + routes wired
+- [x] `GET /` dashboard: project sidebar + badges, no terminals
+- [x] `GET /projects/<id>`: workflow list + new-workflow form + autonomous switch
+- [x] `GET /workflows/<id>`: agents by round + PR/CI card + actions
+- [x] `GET /agents/<id>`: breadcrumb back to workflow
+- [x] `View` loaders + routes wired
 
 ## M5 — autonomous CI loop + parallel test
 

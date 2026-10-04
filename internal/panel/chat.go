@@ -269,6 +269,12 @@ func (s *Server) page(ctx context.Context, a store.Agent) (AgentPage, error) {
 			p.CanTest = true
 		}
 		p.CanPR = a.State != store.AgentClosed && s.Chats.Publisher != nil
+		if a.WorkflowID != 0 {
+			// Chat-only projects have no branches to push: no PR.
+			if pr, err := s.Store.GetProject(ctx, a.Project); err != nil || !pr.HasGit {
+				p.CanPR = false
+			}
+		}
 		ts, err := s.Store.Testers(ctx, a.ID)
 		if err != nil {
 			return p, err

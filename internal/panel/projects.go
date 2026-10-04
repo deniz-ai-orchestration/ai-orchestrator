@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strings"
 
@@ -14,7 +15,16 @@ import (
 type ProjectRow struct {
 	store.Project
 	Name string // display name: the path's last folder
+	// Workflows counts open workflows; Agents counts open agents, Working
+	// the ones in a turn or testing. Only the requested views fill them.
+	Workflows int
+	Agents    int
+	Working   int
 }
+
+func base(path string) string { return filepath.Base(path) }
+
+func query(path string) string { return url.QueryEscape(path) }
 
 // TrustPage is the confirm screen before a path becomes a project.
 type TrustPage struct {
@@ -30,8 +40,16 @@ func (s *Server) projects(ctx context.Context, v *View) error {
 	if err != nil {
 		return err
 	}
+	counts, err := s.Store.ProjectCounts(ctx)
+	if err != nil {
+		return err
+	}
 	for _, p := range ps {
-		v.Projects = append(v.Projects, ProjectRow{Project: p, Name: filepath.Base(p.Path)})
+		row := ProjectRow{Project: p, Name: filepath.Base(p.Path)}
+		if c, ok := counts[p.Path]; ok {
+			row.Workflows, row.Agents, row.Working = c.Workflows, c.Agents, c.Working
+		}
+		v.Projects = append(v.Projects, row)
 	}
 	return nil
 }

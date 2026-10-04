@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="htmx-config" content='{"allowEval":false,"includeIndicatorStyles":false,"historyEnabled":false}'>
+<title>orch · {{.Project.Name}}</title>
+<link rel="stylesheet" href="/static/panel.css">
+<script src="/static/vendor/htmx.min.js"></script>
+<script src="/static/panel.js"></script>
+</head>
+<body>
+<header>
+  <h1><a href="/">orch</a> · {{.Project.Name}}</h1>
+  <div id="flash" aria-live="polite"></div>
+</header>
+<main>
+  <section class="project-meta">
+    <div class="meta">{{.Project.Path}} · {{if .Project.HasGit}}git{{if .Project.GitHubRepo}} · {{.Project.GitHubRepo}}{{end}}{{else}}chat-only, no git{{end}}</div>
+    <form hx-post="/projects/autonomous" hx-target="#flash" hx-swap="innerHTML">
+      <input type="hidden" name="path" value="{{.Project.Path}}">
+      {{if .Project.Autonomous}}<input type="hidden" name="on" value="0"><span class="badge auto">autonomous on</span><button>Switch to manual</button>
+      {{else}}<input type="hidden" name="on" value="1"><button {{if not .Project.HasGit}}disabled title="Chat-only projects stay manual"{{end}}>Switch to autonomous</button>{{end}}
+    </form>
+    {{if not .Project.HasGit}}<p class="muted">Chat-only: agents work in the folder itself, manual testers only, no PR.</p>{{end}}
+  </section>
+  <section>
+    <h2>Workflows</h2>
+    {{if not .Workflows}}<p class="muted">No workflows yet.</p>{{end}}
+    <div class="cards">
+    {{range .Workflows}}
+      <article class="card {{.State}}">
+        <div class="card-head">
+          <a href="/workflows/{{.ID}}">Workflow {{.ID}} · {{.Title}}</a>
+          <span class="badge {{.State}}">{{human .State}}</span>
+        </div>
+        {{if .PRURL}}<div class="meta"><a href="{{.PRURL}}" target="_blank" rel="noopener">PR #{{.PRNumber}}</a>{{if .CIState}} · CI {{.CIState}}{{end}}</div>{{end}}
+        <div class="meta">{{.Branch}}{{if .Dev}} · dev {{human .Dev}}{{end}}{{if .Round}} · round {{.Round}}{{end}}</div>
+        {{if .Last}}<p class="last">{{.Last}}</p>{{end}}
+      </article>
+    {{end}}
+    </div>
+  </section>
+  {{with .Summon}}
+  {{if .Enabled}}
+  <section>
+    <h2>New workflow</h2>
+    {{$v := .}}
+    <form class="summon" hx-post="/workflows" hx-encoding="multipart/form-data" hx-target="#flash" hx-swap="innerHTML">
+      <input type="hidden" name="project" value="{{$.Project.Path}}">
+      <div class="fields">
+        <label>Model
+          <select name="model">
+            {{range .Choices}}<option value="{{.Name}}" title="{{.ModelID}}">{{.Name}}</option>{{end}}
+          </select>
+        </label>
+        <label>Branch
+          <input name="branch" placeholder="new: orch/&lt;id&gt;-&lt;task words&gt;" autocomplete="off" spellcheck="false">
+        </label>
+      </div>
+      <textarea name="message" rows="4" required placeholder="The job, with any context the agent needs"></textarea>
+      <div class="fields">
+        <label>Files <input type="file" name="files" multiple></label>
+        <span class="muted">Text files, up to 1 MB each.</span>
+        <button>Start workflow</button>
+      </div>
+    </form>
+  </section>
+  {{end}}
+  {{end}}
+</main>
+</body>
+</html>

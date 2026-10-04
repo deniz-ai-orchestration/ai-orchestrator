@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -137,6 +138,34 @@ func (s *Store) WorkflowByBranch(ctx context.Context, projectPath, branch string
 // first: the developer chain and the testers of all rounds.
 func (s *Store) WorkflowAgents(ctx context.Context, id int64) ([]Agent, error) {
 	return s.queryAgents(ctx, `SELECT `+agentCols+` FROM agents WHERE workflow_id = ? ORDER BY id`, id)
+}
+
+// WorkflowLastMessage returns the newest message across a workflow's
+// agents, for the workflow list. It reports false when nobody wrote yet.
+func (s *Store) WorkflowLastMessage(ctx context.Context, id int64) (Message, bool, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT m.id, m.agent_id, m.author, m.body, m.files, m.run_id, m.data, m.created_at
+		FROM messages m JOIN agents a ON a.id = m.agent_id
+		WHERE a.workflow_id = ? ORDER BY m.id DESC LIMIT 1`, id)
+	if err != nil {
+		return Message{}, false, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return Message{}, false, nil
+	}
+	var m Message
+	var files, created string
+	var run sql.NullInt64
+	if err := rows.Scan(&m.ID, &m.AgentID, &m.Author, &m.Body, &files, &run, &m.Data, &created); err != nil {
+		return Message{}, false, err
+	}
+	if files != "" {
+		m.Files = strings.Split(files, "\n")
+	}
+	m.RunID = run.Int64
+	m.CreatedAt, _ = parseTime(created)
+	return m, true, rows.Err()
 }
 
 // SetWorkflowState opens or closes a workflow.

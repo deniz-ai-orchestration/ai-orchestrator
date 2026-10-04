@@ -1,7 +1,20 @@
 {{define "projects"}}
 <section id="projects" hx-get="/parts/projects" hx-trigger="every 10s, refresh from:body" hx-swap="outerHTML">
 <h2>Projects</h2>
-{{range .Projects}}<p>{{.Name}} · {{.Path}} · {{if .HasGit}}git{{else}}chat-only{{end}} · {{if .Autonomous}}autonomous{{else}}manual{{end}}</p>{{end}}
+{{if not .Projects}}<p class="muted">No trusted projects yet. Add a PC2 directory below.</p>{{end}}
+<div class="cards">
+{{range .Projects}}
+  <article class="card">
+    <div class="card-head">
+      <a href="/project?path={{.Path | query}}">{{.Name}}</a>
+      <span class="badge {{if .HasGit}}git{{else}}chat{{end}}">{{if .HasGit}}git{{else}}chat-only{{end}}</span>
+      {{if .Autonomous}}<span class="badge auto">autonomous</span>{{end}}
+      {{if .Working}}<span class="badge working">{{.Working}} working</span>{{end}}
+    </div>
+    <div class="meta">{{.Workflows}} workflows · {{.Agents}} agents</div>
+  </article>
+{{end}}
+</div>
 </section>
 {{end}}
 {{define "add-project"}}
