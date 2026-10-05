@@ -22,6 +22,18 @@ document.addEventListener("change", function (evt) {
   if (first) model.value = first.value;
 });
 
+// Project picker: "Use this directory" and "Select" fill the new-project
+// path field.
+document.addEventListener("click", function (evt) {
+  var t = evt.target.closest("[data-pick-dir]");
+  if (!t) return;
+  var input = document.getElementById("new-project-path");
+  if (input) {
+    input.value = t.getAttribute("data-pick-dir");
+    input.focus();
+  }
+});
+
 // Summon form: picking a role preselects its model and that model's
 // provider.
 function applyRole(role) {

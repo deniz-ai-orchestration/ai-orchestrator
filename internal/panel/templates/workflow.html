@@ -11,7 +11,7 @@
 </head>
 <body>
 <header>
-  <h1><a href="/">orch</a> · <a href="/project?path={{.Project.Path | query}}">{{.Project.Name}}</a> · workflow {{.ID}}</h1>
+  <h1><a href="/">orch</a> · <a href="/projects/{{.Project.ID}}">{{.Project.Title}}</a> · workflow {{.ID}}</h1>
   {{template "workflow-head" .}}
   <div id="flash" aria-live="polite"></div>
 </header>

@@ -53,13 +53,13 @@ type WorkflowPage struct {
 // workflowRunLimit is how many of a workflow's runs its page shows.
 const workflowRunLimit = 12
 
-func (s *Server) projectFromQuery(w http.ResponseWriter, r *http.Request) (store.Project, bool) {
-	path := strings.TrimSpace(r.URL.Query().Get("path"))
-	if path == "" {
+func (s *Server) projectFromPath(w http.ResponseWriter, r *http.Request) (store.Project, bool) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
 		http.NotFound(w, r)
 		return store.Project{}, false
 	}
-	p, err := s.Store.GetProject(r.Context(), path)
+	p, err := s.Store.GetProjectByID(r.Context(), id)
 	if err != nil {
 		s.notFound(w, r, err)
 		return p, false
@@ -67,8 +67,30 @@ func (s *Server) projectFromQuery(w http.ResponseWriter, r *http.Request) (store
 	return p, true
 }
 
+// BrowsePage is the project picker's current folder.
+type BrowsePage struct {
+	Current string
+	Parent  string
+	Dirs    []runner.BrowseDir
+}
+
+// browseProjects answers the picker: subdirectories to navigate, or the
+// trusted roots at the top.
+func (s *Server) browseProjects(w http.ResponseWriter, r *http.Request) {
+	if s.Chats == nil {
+		s.flash(w, "Agents are not running in this orch.")
+		return
+	}
+	current, parent, dirs, err := s.Chats.Projects.Browse(r.URL.Query().Get("path"))
+	if err != nil {
+		s.flash(w, "Not a project: "+err.Error())
+		return
+	}
+	s.render(w, "browse", BrowsePage{Current: current, Parent: parent, Dirs: dirs})
+}
+
 func (s *Server) projectPage(w http.ResponseWriter, r *http.Request) {
-	p, ok := s.projectFromQuery(w, r)
+	p, ok := s.projectFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -361,7 +383,11 @@ func (s *Server) closeWorkflow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Log.Info("panel action", "command", "close_workflow", "workflow", wf.ID)
-	w.Header().Set("HX-Redirect", "/project?path="+query(wf.ProjectPath))
+	redirect := "/"
+	if p, err := s.Store.GetProject(r.Context(), wf.ProjectPath); err == nil {
+		redirect = fmt.Sprintf("/projects/%d", p.ID)
+	}
+	w.Header().Set("HX-Redirect", redirect)
 	s.flash(w, fmt.Sprintf("Closed. Branch %s stays in the project.", wf.Branch))
 }
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/url"
 	"path/filepath"
 	"strings"
 
@@ -24,8 +23,6 @@ type ProjectRow struct {
 }
 
 func base(path string) string { return filepath.Base(path) }
-
-func query(path string) string { return url.QueryEscape(path) }
 
 // TrustPage is the confirm screen before a path becomes a project.
 type TrustPage struct {

@@ -12,6 +12,8 @@ import (
 // directory without .git is chat-only: Autonomous stays off and no PR is
 // pushed from it.
 type Project struct {
+	// ID is the rowid: stable, never reused, used in panel URLs.
+	ID         int64
 	Path       string // absolute, cleaned
 	Trusted    bool
 	HasGit     bool
@@ -25,12 +27,12 @@ type Project struct {
 	UpdatedAt   time.Time
 }
 
-const projectCols = `path, trusted, has_git, autonomous, github_repo, name, description, created_at, updated_at`
+const projectCols = `rowid, path, trusted, has_git, autonomous, github_repo, name, description, created_at, updated_at`
 
 func scanProject(row scanner) (Project, error) {
 	var p Project
 	var created, updated string
-	err := row.Scan(&p.Path, &p.Trusted, &p.HasGit, &p.Autonomous, &p.GitHubRepo, &p.Name, &p.Description, &created, &updated)
+	err := row.Scan(&p.ID, &p.Path, &p.Trusted, &p.HasGit, &p.Autonomous, &p.GitHubRepo, &p.Name, &p.Description, &created, &updated)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Project{}, ErrNotFound
 	}
@@ -67,6 +69,12 @@ func (s *Store) UpsertProject(ctx context.Context, p Project) error {
 // GetProject returns one stored project, or ErrNotFound.
 func (s *Store) GetProject(ctx context.Context, path string) (Project, error) {
 	return scanProject(s.db.QueryRowContext(ctx, `SELECT `+projectCols+` FROM projects WHERE path = ?`, path))
+}
+
+// GetProjectByID returns one stored project by its panel URL id, or
+// ErrNotFound.
+func (s *Store) GetProjectByID(ctx context.Context, id int64) (Project, error) {
+	return scanProject(s.db.QueryRowContext(ctx, `SELECT `+projectCols+` FROM projects WHERE rowid = ?`, id))
 }
 
 // ListProjects returns every known project, by path.
