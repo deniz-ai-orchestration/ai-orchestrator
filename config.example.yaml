@@ -20,7 +20,10 @@ panel:
   listen: 192.168.1.20:8787            # PC2's LAN address only; no login, open it by IP
 
 projects:
-  trusted_roots: [~/projects]            # a project path must be inside one of these; you trust each project in the panel
+  # Every project directory must live inside one of these. Add each parent
+  # folder you work in (for example ~/orch-work): the panel's directory
+  # picker only browses these, and anything outside them is refused.
+  trusted_roots: [~/projects]
   # dir: ~/projects                      # legacy: one git repo per folder, summonable by folder name
 
 runner:

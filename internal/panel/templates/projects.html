@@ -6,7 +6,7 @@
 {{range .Projects}}
   <article class="card">
     <div class="card-head">
-      <a href="/project?path={{.Path | query}}">{{.Title}}</a>
+      <a href="/projects/{{.ID}}">{{.Title}}</a>
       <span class="badge {{if .HasGit}}git{{else}}chat{{end}}">{{if .HasGit}}git{{else}}chat-only{{end}}</span>
       {{if .Autonomous}}<span class="badge auto">autonomous</span>{{end}}
       {{if .Working}}<span class="badge working">{{.Working}} working</span>{{end}}
@@ -24,19 +24,38 @@
 <form class="summon" hx-post="/projects/inspect" hx-target="#trust">
   <div class="fields">
     <label>Name <input name="name" required maxlength="100" placeholder="car-guessr" autocomplete="off" spellcheck="false"></label>
-    <label>Project directory <input name="path" required placeholder="/home/selman/orch-work/car-guessr-flow" autocomplete="off" spellcheck="false"></label>
+    <label>Project directory <input id="new-project-path" name="path" required placeholder="/home/selman/orch-work/car-guessr-flow" autocomplete="off" spellcheck="false"></label>
+    <button type="button" hx-get="/projects/browse" hx-target="#dir-picker" hx-swap="innerHTML">Browse</button>
   </div>
   <textarea name="description" rows="2" maxlength="500" placeholder="Optional description"></textarea>
-  <div class="fields"><button>Inspect directory</button></div>
+  <div class="fields"><button>Check directory</button></div>
 </form>
+<div id="dir-picker"></div>
 <div id="trust"></div></section>
 {{end}}
 {{end}}
+{{define "browse"}}
+<div class="picker">
+  {{if .Current}}
+  <div class="meta">{{.Current}} <button type="button" data-pick-dir="{{.Current}}">Use this directory</button></div>
+  {{if .Parent}}<div><button type="button" hx-get="/projects/browse?path={{.Parent}}" hx-target="#dir-picker" hx-swap="innerHTML">↑ {{.Parent}}</button></div>{{end}}
+  {{else}}
+  <div class="meta">Trusted roots</div>
+  {{end}}
+  {{range .Dirs}}
+  <div>
+    <button type="button" hx-get="/projects/browse?path={{.Path}}" hx-target="#dir-picker" hx-swap="innerHTML">{{.Display}}</button>
+    <button type="button" data-pick-dir="{{.Path}}">Select</button>
+  </div>
+  {{end}}
+</div>
+{{end}}
 {{define "trust-confirm"}}
-<p>Trust <strong>{{.Name}}</strong> at {{.Path}}? {{.Files}} files · git {{if .HasGit}}yes{{else}}no{{end}}{{if .Repo}} · {{.Repo}}{{end}}</p>
+<p>Trust this folder for <strong>{{.Name}}</strong>?</p>
+<div class="meta">{{.Path}} · {{.Files}} files · git {{if .HasGit}}yes{{else}}no{{end}}{{if .Repo}} · {{.Repo}}{{end}}</div>
 {{if .Description}}<p>{{.Description}}</p>{{end}}
 <p>{{.Why}}</p>
 <form hx-post="/projects/trust" hx-target="#flash">
 <input type="hidden" name="name" value="{{.Name}}"><input type="hidden" name="description" value="{{.Description}}"><input type="hidden" name="path" value="{{.Path}}">
-<button>Trust this directory</button></form>
+<button>Create project</button></form>
 {{end}}

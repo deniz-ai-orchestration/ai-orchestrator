@@ -19,11 +19,11 @@ import (
 // agent gets its own git worktree, so parallel agents never edit each
 // other's files.
 //
-// A project is named either by its folder under Dir (the legacy form, what
-// agents summoned before workflows store) or by a free absolute path
-// inside one of the TrustedRoots. Per-project trust lives in the store's
-// projects table and is granted from the panel; the roots here are the
-// outer boundary: orch never resolves a path outside them.
+// A project is named either by its folder (under Dir, or under any trusted
+// root when Dir is unset) or by a free absolute path inside one of the
+// TrustedRoots. Per-project trust lives in the store's projects table and
+// is granted from the panel; the roots here are the outer boundary: orch
+// never resolves a path outside them.
 type Projects struct {
 	Dir          string
 	TrustedRoots []string
@@ -55,9 +55,11 @@ func (p Projects) roots() []string {
 	return out
 }
 
-// Resolve turns a project (a legacy folder name under Dir, "~/..." or an
-// absolute path) into a clean absolute directory inside a trusted root.
-// It does not look at the filesystem.
+// Resolve turns a project (a legacy folder name, "~/..." or an absolute
+// path) into a clean absolute directory inside a trusted root. A bare
+// name means the folder under Dir; with Dir unset it probes each root
+// for that folder, so agents summoned before the roots existed keep
+// resolving after projects.dir is retired.
 func (p Projects) Resolve(project string) (string, error) {
 	roots := p.roots()
 	if len(roots) == 0 {
@@ -68,14 +70,16 @@ func (p Projects) Resolve(project string) (string, error) {
 		return "", errors.New("no project path")
 	}
 	if target != "~" && !strings.ContainsAny(target, `/\`) {
-		// A legacy folder name under projects.dir.
 		if !projectName.MatchString(target) {
 			return "", fmt.Errorf("%q is not a project folder name", target)
 		}
-		if p.Dir == "" {
-			return "", ErrNoProjects
+		if p.Dir != "" {
+			target = filepath.Join(p.Dir, target)
+		} else if probe, ok := p.probeRoots(target); ok {
+			target = probe
+		} else {
+			return "", fmt.Errorf("%q is not a folder in the trusted project roots (%s)", target, strings.Join(roots, ", "))
 		}
-		target = filepath.Join(p.Dir, target)
 	}
 	if target == "~" || strings.HasPrefix(target, "~/") {
 		home, err := os.UserHomeDir()
@@ -102,7 +106,71 @@ func (p Projects) Resolve(project string) (string, error) {
 			return resolved, nil
 		}
 	}
-	return "", fmt.Errorf("%s is outside the trusted project roots", target)
+	return "", fmt.Errorf("%s is outside the trusted project roots (%s). Add its parent to projects.trusted_roots in the config.",
+		target, strings.Join(roots, ", "))
+}
+
+// probeRoots finds a bare folder name under the trusted roots, Dir first.
+// The first existing directory wins.
+func (p Projects) probeRoots(name string) (string, bool) {
+	for _, r := range p.roots() {
+		sub := filepath.Join(r, name)
+		if fi, err := os.Stat(sub); err == nil && fi.IsDir() {
+			return sub, true
+		}
+	}
+	return "", false
+}
+
+// BrowseDir is one subdirectory in the project picker's current folder.
+type BrowseDir struct {
+	// Path is absolute; Display is relative to the current folder.
+	Path    string
+	Display string
+}
+
+// Browse lists a directory for the project picker: its subdirectories,
+// or the trusted roots when dir is empty. Everything stays inside the
+// roots: symlinks resolve before the boundary check.
+func (p Projects) Browse(dir string) (current string, parent string, dirs []BrowseDir, err error) {
+	roots := p.roots()
+	if len(roots) == 0 {
+		return "", "", nil, ErrNoProjects
+	}
+	if strings.TrimSpace(dir) == "" {
+		for _, r := range roots {
+			if fi, err := os.Stat(r); err == nil && fi.IsDir() {
+				dirs = append(dirs, BrowseDir{Path: r, Display: r})
+			}
+		}
+		return "", "", dirs, nil
+	}
+	current, err = p.Resolve(dir)
+	if err != nil {
+		return "", "", nil, err
+	}
+	entries, err := os.ReadDir(current)
+	if err != nil {
+		return "", "", nil, err
+	}
+	for _, e := range entries {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		sub := filepath.Join(current, e.Name())
+		if _, err := p.Resolve(sub); err != nil {
+			continue // a symlink pointing outside the roots
+		}
+		dirs = append(dirs, BrowseDir{Path: sub, Display: e.Name()})
+	}
+	for _, r := range roots {
+		if rel, err := filepath.Rel(r, current); err == nil && rel != ".." &&
+			!strings.HasPrefix(rel, ".."+string(filepath.Separator)) && current != r {
+			parent = filepath.Dir(current)
+			break
+		}
+	}
+	return current, parent, dirs, nil
 }
 
 // maxTrustFiles caps how many files a trust prompt counts.

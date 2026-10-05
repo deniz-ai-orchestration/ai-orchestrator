@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -344,7 +343,6 @@ func duration(d time.Duration) string {
 var funcs = template.FuncMap{
 	"human": func(s any) string { return strings.ReplaceAll(fmt.Sprint(s), "_", " ") },
 	"base":  func(path string) string { return filepath.Base(path) },
-	"query": url.QueryEscape,
 	"lineClass": func(l string) string {
 		switch {
 		case strings.HasPrefix(l, "▸"):
